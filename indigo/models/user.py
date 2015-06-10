@@ -40,7 +40,7 @@ class User(Model):
         if self.objects.filter(username=kwargs['username']).count():
             raise UniqueException("Username '{}' already in use".format(kwargs['username']))
 
-        super(User, self).create(**kwargs)
+        return super(User, self).create(**kwargs)
 
     def save(self, **kwargs):
         if "update_fields" in kwargs:

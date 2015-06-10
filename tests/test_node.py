@@ -20,7 +20,7 @@ class NodeTest(unittest.TestCase):
         Node.create(name="test_fail", address="127.0.0.1")
 
     def test_setstatus(self):
-        Node.create(name="status_test", address="127.0.0.1")
+        Node.create(name="status_test", address="127.0.0.2")
         node = Node.find("status_test")
         assert node.status == "UP"
 

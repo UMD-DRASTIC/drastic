@@ -19,18 +19,14 @@ class Node(Model):
         We intercept the create call so that we can check for uniqueness
         of IP
         """
-        print kwargs
         if self.objects.filter(address=kwargs['address']).count():
             raise UniqueException("Address '{}' already in use".format(kwargs['address']))
 
-        print "Is unique"
         if not kwargs.get("last_update"):
             kwargs["last_update"] = datetime.now()
-            print "Updated update time"
 
         kwargs["id"] = unicode(uuid.uuid4())
-        print kwargs
-        super(Node, self).create(**kwargs)
+        return super(Node, self).create(**kwargs)
 
     @classmethod
     def find(self, name_or_address):
@@ -48,10 +44,10 @@ class Node(Model):
         return self.objects.all()
 
     def status_up(self):
-        self.status = "UP"
+        self.update(status="UP")
 
     def status_down(self):
-        self.status = "DOWN"
+        self.update(status="DOWN")
 
     def __unicode__(self):
         return "{}/{}".format(self.name, self.address)
