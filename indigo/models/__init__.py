@@ -11,6 +11,8 @@ def initialise(keyspace, strategy="SimpleStrategy", repl_factor=1):
 
 def sync():
     sync_table(User)
+    sync_table(Node)
 
 def destroy(keyspace):
     drop_keyspace(keyspace)
+    drop_keyspace(keyspace + "_test")
