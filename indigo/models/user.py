@@ -8,6 +8,16 @@ from passlib.hash import pbkdf2_sha256
 
 from indigo.models.errors import UniqueException
 
+class MetaPK(object):
+    def value_to_string(self, user):
+        return str(user.id)
+    def to_python(id) :
+        return User.find_by_id(id)
+
+class Meta(object):
+    pk = MetaPK()
+
+
 class User(Model):
     id       = columns.UUID(primary_key=True, default=uuid.uuid4)
     username = columns.Text(required=True, index=True)
@@ -15,6 +25,8 @@ class User(Model):
     password = columns.Text(required=True)
     administrator = columns.Boolean(required=True, default=False)
     active   = columns.Boolean(required=True, default=True)
+
+    _meta = Meta()
 
     @classmethod
     def create(self, **kwargs):
@@ -30,9 +42,27 @@ class User(Model):
 
         super(User, self).create(**kwargs)
 
+    def save(self, **kwargs):
+        if "update_fields" in kwargs:
+            del kwargs["update_fields"]
+        super(User, self).save(**kwargs)
+
+    def is_authenticated(self):
+        return True
+
+    def is_active(self):
+        return self.active
+
+    def get_full_name(self):
+        return self.username
+
     @classmethod
     def find(self, username):
         return self.objects.filter(username=username).first()
+
+    @classmethod
+    def find_by_id(self, idstring):
+        return self.objects.filter(id=idstring).first()
 
     def authenticate(self, password):
         return pbkdf2_sha256.verify(password, self.password) and self.active
