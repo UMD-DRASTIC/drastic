@@ -28,3 +28,8 @@ class NodeTest(unittest.TestCase):
 
         assert child1.get_parent_collection().id == coll.id
         assert child2.get_parent_collection().id == coll.id
+
+        children = coll.get_child_collections()
+        assert len(children) == 2
+        assert str(children[0].id) == str(child1.id)
+        assert str(children[1].id) == str(child2.id)

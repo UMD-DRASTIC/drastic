@@ -5,10 +5,11 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models import Resource
+from indigo.util import default_id
 from indigo.models.errors import UniqueException
 
 class Collection(Model):
-    id       = columns.UUID(primary_key=True, default=uuid.uuid4)
+    id       = columns.Text(primary_key=True, default=default_id)
     name     = columns.Text(required=True, index=True)
 
     # ID of the parent collection, if "" then is the root element

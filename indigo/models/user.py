@@ -7,26 +7,16 @@ from cassandra.cqlengine.models import Model
 from passlib.hash import pbkdf2_sha256
 
 from indigo.models.errors import UniqueException
-
-class MetaPK(object):
-    def value_to_string(self, user):
-        return str(user.id)
-    def to_python(id) :
-        return User.find_by_id(id)
-
-class Meta(object):
-    pk = MetaPK()
+from indigo.util import default_id
 
 
 class User(Model):
-    id       = columns.UUID(primary_key=True, default=uuid.uuid4)
+    id       = columns.Text(primary_key=True, default=default_id)
     username = columns.Text(required=True, index=True)
     email    = columns.Text(required=True)
     password = columns.Text(required=True)
     administrator = columns.Boolean(required=True, default=False)
     active   = columns.Boolean(required=True, default=True)
-
-    _meta = Meta()
 
     @classmethod
     def create(self, **kwargs):

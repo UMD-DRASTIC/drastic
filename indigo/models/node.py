@@ -5,9 +5,10 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.errors import UniqueException
+from indigo.util import default_id
 
 class Node(Model):
-    id       = columns.UUID(primary_key=True, default=uuid.uuid4)
+    id       = columns.Text(primary_key=True, default=default_id)
     name     = columns.Text(required=True, index=True)
     address  = columns.Text(required=True, index=True)
     last_update = columns.DateTime()

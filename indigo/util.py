@@ -1,5 +1,9 @@
 import collections
 import functools
+import uuid
+
+def default_id():
+   return unicode(uuid.uuid4())
 
 class memoized(object):
    '''Decorator. Caches a function's return value each time it is called.
