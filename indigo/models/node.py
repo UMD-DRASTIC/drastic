@@ -10,7 +10,7 @@ class Node(Model):
     id       = columns.UUID(primary_key=True, default=uuid.uuid4)
     name     = columns.Text(required=True, index=True)
     address  = columns.Text(required=True, index=True)
-    lastupdate = columns.DateTime()
+    last_update = columns.DateTime()
     status   = columns.Text(required=True, default="UP")
 
     @classmethod
@@ -19,12 +19,17 @@ class Node(Model):
         We intercept the create call so that we can check for uniqueness
         of IP
         """
+        print kwargs
         if self.objects.filter(address=kwargs['address']).count():
             raise UniqueException("Address '{}' already in use".format(kwargs['address']))
 
-        if not kwargs.get("lastupdate"):
-            kwargs["lastupdate"] = datetime.now()
+        print "Is unique"
+        if not kwargs.get("last_update"):
+            kwargs["last_update"] = datetime.now()
+            print "Updated update time"
 
+        kwargs["id"] = unicode(uuid.uuid4())
+        print kwargs
         super(Node, self).create(**kwargs)
 
     @classmethod
@@ -35,8 +40,12 @@ class Node(Model):
         return node
 
     @classmethod
+    def find_by_id(self, idstring):
+        return self.objects.filter(id=idstring).first()
+
+    @classmethod
     def list(self):
-        return self.objects.all().order_by("name")
+        return self.objects.all()
 
     def status_up(self):
         self.status = "UP"
@@ -49,6 +58,7 @@ class Node(Model):
 
     def to_dict(self):
         return {
+            'id': self.id,
             'name': self.name,
             'address': self.address,
             'last_update': self.last_update,
