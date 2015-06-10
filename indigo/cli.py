@@ -2,7 +2,7 @@ import argparse
 import sys
 
 from indigo import get_config
-from indigo.models import initialise, sync
+from indigo.models import initialise, sync, destroy
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Interact with the indigo system')
@@ -17,6 +17,11 @@ def parse_arguments():
 def create(cfg):
     initialise(cfg.get("KEYSPACE", "indigo"))
     sync()
+
+def zap(cfg):
+    keyspace = cfg.get("KEYSPACE", "indigo")
+    initialise(keyspace)
+    destroy(keyspace)
 
 def user_add(cfg, username=None):
     from indigo.models import User
@@ -50,3 +55,5 @@ def main():
         create(cfg)
     elif command == 'user-add':
         user_add(cfg, args.command[1:])
+    elif command == 'zap':
+        zap(cfg)

@@ -1,0 +1,5 @@
+
+
+
+class UniqueException(BaseException):
+    pass

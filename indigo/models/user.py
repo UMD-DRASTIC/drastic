@@ -6,6 +6,8 @@ from cassandra.cqlengine.models import Model
 
 from passlib.hash import pbkdf2_sha256
 
+from indigo.models.errors import UniqueException
+
 class User(Model):
     id       = columns.UUID(primary_key=True, default=uuid.uuid4)
     username = columns.Text(required=True, index=True)
@@ -23,6 +25,9 @@ class User(Model):
         kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                    rounds=200000,
                                                    salt_size=16)
+        if self.objects.filter(username=kwargs['username']).count():
+            raise UniqueException("Username '{}' already in use".format(kwargs['username']))
+
         super(User, self).create(**kwargs)
 
     @classmethod
@@ -37,6 +42,7 @@ class User(Model):
 
     def to_dict(self):
         return {
+            'id': self.id,
             'username': self.username,
             'email': self.email,
             'administrator': self.administrator,
