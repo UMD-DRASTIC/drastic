@@ -23,13 +23,19 @@ class NodeTest(unittest.TestCase):
         assert coll.name == "test_root"
         assert coll.is_root
 
-        child1 = Collection.create(name="child1", parent=str(coll.id), path="/child1/")
-        child2 = Collection.create(name="child2", parent=str(coll.id), path="/child2/")
+        child1 = Collection.create(name="child1", parent=str(coll.id))
+        child2 = Collection.create(name="child2", parent=str(coll.id))
 
         assert child1.get_parent_collection().id == coll.id
         assert child2.get_parent_collection().id == coll.id
 
+        assert child1.path == '/child1/'
+        assert child2.path == '/child2/'
+
         children = coll.get_child_collections()
         assert len(children) == 2
+
+        assert coll.get_child_collection_count() == 2
+
         assert str(children[0].id) == str(child1.id)
         assert str(children[1].id) == str(child2.id)

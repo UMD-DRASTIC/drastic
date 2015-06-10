@@ -25,11 +25,18 @@ class Collection(Model):
         """
         if not kwargs.get('parent'):
             kwargs['is_root'] = True
+            kwargs['path'] = '/'
+        else:
+            parent = Collection.find_by_id(kwargs['parent'])
+            kwargs['path'] = "{}{}/".format(parent.path, kwargs['name'])
 
         return super(Collection, self).create(**kwargs)
 
     def get_child_collections(self):
         return Collection.objects.filter(parent=self.id).all()
+
+    def get_child_collection_count(self):
+        return Collection.objects.filter(parent=self.id).count()
 
     def get_child_resources(self):
         return Resource.objects.filter(container=self.id).all()
