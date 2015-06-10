@@ -11,6 +11,7 @@ class User(Model):
     username = columns.Text(required=True, index=True)
     email    = columns.Text(required=True)
     password = columns.Text(required=True)
+    administrator = columns.Boolean(required=True, default=False)
     active   = columns.Boolean(required=True, default=True)
 
     @classmethod
@@ -24,6 +25,20 @@ class User(Model):
                                                    salt_size=16)
         super(User, self).create(**kwargs)
 
+    @classmethod
+    def find(self, username):
+        return self.objects.filter(username=username).first()
+
     def authenticate(self, password):
         return pbkdf2_sha256.verify(password, self.password) and self.active
 
+    def __unicode__(self):
+        return unicode(self.username)
+
+    def to_dict(self):
+        return {
+            'username': self.username,
+            'email': self.email,
+            'administrator': self.administrator,
+            'active': self.active,
+        }
