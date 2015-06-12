@@ -32,6 +32,8 @@ def user_add(cfg, username=None):
     else:
         username = username[0]
 
+    admin = raw_input("Is this an administrator? [y/N] ")
+
     # Check if user exists and bail if so
     initialise(cfg.get("KEYSPACE", "indigo"))
     user = User.objects.filter(username=username).first()
@@ -41,7 +43,7 @@ def user_add(cfg, username=None):
 
     email = raw_input("Please enter the user's email address: ")
     password = getpass("Please enter the user's password: ")
-    User.create(username=username, password=password, email=email)
+    User.create(username=username, password=password, email=email,administrator=(admin.lower()=='y'))
 
     print "Success: User with username {} has been created".format(username)
 

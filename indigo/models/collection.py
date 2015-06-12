@@ -14,7 +14,7 @@ class Collection(Model):
 
     # ID of the parent collection, if "" then is the root element
     parent   = columns.Text(required=False, index=True)
-    path     = columns.Text(required=True)
+    path     = columns.Text(required=True, index=True)
     is_root  = columns.Boolean(default=False, index=True)
 
     @classmethod
@@ -23,12 +23,21 @@ class Collection(Model):
         We intercept the create call so that we can correctly
         set the is_root (and path) for the collection
         """
+
+        # TODO: Handle unicode chars in the name
+        kwargs['name'] = kwargs['name'].strip()
+
         if not kwargs.get('parent'):
             kwargs['is_root'] = True
-            kwargs['path'] = '/'
+            kwargs['path'] = u'/'
         else:
             parent = Collection.find_by_id(kwargs['parent'])
-            kwargs['path'] = "{}{}/".format(parent.path, kwargs['name'])
+            kwargs['path'] = u"{}{}/".format(parent.path, kwargs['name'])
+
+            # Make sure parent/name are not in use.
+            existing = self.objects.filter(parent=parent.id).all()
+            if kwargs['name'] in [e['name'] for e in existing]:
+                raise UniqueException("That name is in use in the current collection")
 
         return super(Collection, self).create(**kwargs)
 
@@ -54,6 +63,10 @@ class Collection(Model):
     @classmethod
     def find(self, name):
         return self.objects.filter(name=name).first()
+
+    @classmethod
+    def find_by_path(self, path):
+        return self.objects.filter(path=path).first()
 
     @classmethod
     def find_by_id(self, idstring):
