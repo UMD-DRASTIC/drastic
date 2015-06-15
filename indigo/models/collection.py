@@ -8,6 +8,7 @@ from indigo.models import Resource
 from indigo.util import default_id
 from indigo.models.errors import UniqueException
 
+
 class Collection(Model):
     id       = columns.Text(primary_key=True, default=default_id)
     name     = columns.Text(required=True, index=True)
@@ -16,6 +17,9 @@ class Collection(Model):
     parent   = columns.Text(required=False, index=True)
     path     = columns.Text(required=True, index=True)
     is_root  = columns.Boolean(default=False, index=True)
+    metadata  = columns.Map(columns.Text, columns.Text, index=True)
+    create_ts   = columns.DateTime()
+
 
     @classmethod
     def create(self, **kwargs):
@@ -26,6 +30,7 @@ class Collection(Model):
 
         # TODO: Handle unicode chars in the name
         kwargs['name'] = kwargs['name'].strip()
+        kwargs['create_ts'] = datetime.now()
 
         if not kwargs.get('parent'):
             kwargs['is_root'] = True
@@ -77,4 +82,11 @@ class Collection(Model):
 
     def to_dict(self):
         return {
+            "id": self.id,
+            "name": self.name,
+            "parent_id": self.parent,
+            "path": self.path,
+            "is_root": self.is_root,
+            "created": self.create_ts,
+            "metadata": [(k,v) for k,v in self.metadata.iteritems()]
         }

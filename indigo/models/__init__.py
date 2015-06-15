@@ -1,10 +1,10 @@
 from cassandra.cqlengine import connection
 from cassandra.cqlengine.management import create_keyspace, drop_keyspace, sync_table
 
-from .user import User
-from .node import Node
-from .collection import Collection
-from .resource import Resource
+from indigo.models.user import User
+from indigo.models.node import Node
+from indigo.models.collection import Collection
+from indigo.models.resource import Resource
 
 def initialise(keyspace, strategy="SimpleStrategy", repl_factor=1):
     connection.setup(['127.0.0.1'], keyspace, protocol_version=3)

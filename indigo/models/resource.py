@@ -11,6 +11,11 @@ class Resource(Model):
     id        = columns.Text(primary_key=True, default=default_id)
     name      = columns.Text(required=True, index=True)
     container = columns.Text(required=True, index=True)
+    checksum  = columns.Text(required=False)
+    size      = columns.Integer(required=False, default=0)
+    metadata  = columns.Map(columns.Text, columns.Text, index=True)
+    create_ts   = columns.DateTime()
+    modified_ts = columns.DateTime()
 
     @classmethod
     def find(self, name):
