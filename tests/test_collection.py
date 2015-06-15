@@ -37,5 +37,3 @@ class NodeTest(unittest.TestCase):
 
         assert coll.get_child_collection_count() == 2
 
-        assert str(children[0].id) == str(child1.id)
-        assert str(children[1].id) == str(child2.id)
