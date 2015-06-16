@@ -6,6 +6,7 @@ from indigo.models.errors import UniqueException
 from nose.tools import raises
 
 class NodeTest(unittest.TestCase):
+    _multiprocess_can_split_ = True
 
     def test_create(self):
         Node.create(name="test", address="127.0.0.1")

@@ -1,6 +1,7 @@
 from cassandra.cqlengine import connection
 from cassandra.cqlengine.management import create_keyspace, drop_keyspace, sync_table
 
+from indigo.models.group import Group
 from indigo.models.user import User
 from indigo.models.node import Node
 from indigo.models.collection import Collection
@@ -15,6 +16,7 @@ def sync():
     sync_table(Node)
     sync_table(Collection)
     sync_table(Resource)
+    sync_table(Group)
 
 def destroy(keyspace):
     drop_keyspace(keyspace)

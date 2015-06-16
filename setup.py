@@ -40,7 +40,7 @@ setup(
     entry_points={
         'console_scripts': [
             "indigo = indigo.cli:main"
-        ]
+        ],
     },
     classifiers=[
         "Development Status :: 4 - Beta",

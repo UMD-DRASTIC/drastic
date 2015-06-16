@@ -6,6 +6,7 @@ from cassandra.cqlengine.models import Model
 
 from passlib.hash import pbkdf2_sha256
 
+from indigo.models.group import Group
 from indigo.models.errors import UniqueException
 from indigo.util import default_id
 
@@ -17,6 +18,7 @@ class User(Model):
     password = columns.Text(required=True)
     administrator = columns.Boolean(required=True, default=False)
     active   = columns.Boolean(required=True, default=True)
+    groups   = columns.List(columns.Text, index=True)
 
     @classmethod
     def create(self, **kwargs):
@@ -24,9 +26,17 @@ class User(Model):
         We intercept the create call so that we can correctly
         hash the password into an unreadable form
         """
+        quick = 'quick' in kwargs
+        if quick:
+            rounds = 1
+            size = 1
+            kwargs.pop('quick')
+        else:
+            rounds = 200000
+            size = 16
         kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
-                                                   rounds=200000,
-                                                   salt_size=16)
+                                                   rounds=rounds,
+                                                   salt_size=size)
         if self.objects.filter(username=kwargs['username']).count():
             raise UniqueException("Username '{}' already in use".format(kwargs['username']))
 
@@ -67,4 +77,5 @@ class User(Model):
             'email': self.email,
             'administrator': self.administrator,
             'active': self.active,
+            'groups': [g.to_dict for g in Group.find_by_ids(self.groups)]
         }

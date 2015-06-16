@@ -33,6 +33,14 @@ class Group(Model):
     def find_by_ids(self, idlist):
         return self.objects.filter(id__in=idlist).all()
 
+    def get_users(self):
+        # Slow and ugly, not sure I like having to iterate
+        # through all of the Users but the __in suffix for
+        # queries won't let me query all users where this
+        # objects ID appears in the User group field.
+        from indigo.models import User
+        return [u for u in User.objects.all() if u.active and self.id in u.groups]
+
     def __unicode__(self):
         return unicode(self.name)
 

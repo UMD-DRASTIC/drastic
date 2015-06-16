@@ -20,6 +20,14 @@ class Collection(Model):
     metadata  = columns.Map(columns.Text, columns.Text, index=True)
     create_ts   = columns.DateTime()
 
+    # The access columns contain lists of group IDs that are allowed
+    # the specified permission. If the lists have at least one entry
+    # then access is restricted, if there are no entries in a particular
+    # list, then access is granted to all (authenticated users)
+    read_access  = columns.List(columns.Text)
+    edit_access  = columns.List(columns.Text)
+    write_access  = columns.List(columns.Text)
+    delete_access = columns.List(columns.Text)
 
     @classmethod
     def create(self, **kwargs):
@@ -79,6 +87,24 @@ class Collection(Model):
 
     def __unicode__(self):
         return "{}/{}".format(self.name, self.path)
+
+    def user_can(self, user, action):
+        """
+        User can perform the action if any of the user's group IDs
+        appear in this list for 'action'_access in this object.
+        """
+        l = getattr(self, '{}_access'.format(action))
+        if len(l) and not len(user.groups):
+            # Group access required, user not in any groups
+            return False
+        if not len(l):
+            # Group access not required
+            return True
+
+        # if groups has less than user.groups then it has had a group
+        # removed, it confirms presence in l
+        groups = set(user.groups) - set(l)
+        return len(groups) < len(user.groups)
 
     def to_dict(self):
         return {
