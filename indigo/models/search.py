@@ -27,7 +27,10 @@ class SearchIndex(Model):
 
     @classmethod
     def is_stop_word(cls, term):
-        return term in ["a", "the", "of", "is"]
+        return term in ["a", "an", "and",
+                        "the", "of", "is",
+                        "in", "it", "or",
+                        "to"]
 
     @classmethod
     def find(cls, termstrings):
@@ -85,12 +88,19 @@ class SearchIndex(Model):
 
         terms = []
         for f in fields:
-            terms.extend( clean(getattr(object, f)) )
+            attr = getattr(object, f)
+            if isinstance(attr, dict):
+                for k, v in attr.iteritems():
+                    terms.extend(clean(v.strip()))
+            else:
+                terms.extend(clean(attr))
 
         object_type = object.__class__.__name__
 
         for term in terms:
             if cls.is_stop_word(term):
+                continue
+            if len(term) < 2:
                 continue
 
             SearchIndex.create(term=term, object_type=object_type, object_id=object.id)
