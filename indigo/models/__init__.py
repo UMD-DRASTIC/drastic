@@ -5,6 +5,7 @@ from indigo.models.group import Group
 from indigo.models.user import User
 from indigo.models.node import Node
 from indigo.models.collection import Collection
+from indigo.models.search import SearchIndex
 from indigo.models.resource import Resource
 
 def initialise(keyspace, strategy="SimpleStrategy", repl_factor=1):
@@ -17,6 +18,7 @@ def sync():
     sync_table(Collection)
     sync_table(Resource)
     sync_table(Group)
+    sync_table(SearchIndex)
 
 def destroy(keyspace):
     drop_keyspace(keyspace)
