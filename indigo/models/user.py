@@ -21,13 +21,12 @@ class User(Model):
     groups   = columns.List(columns.Text, index=True)
 
     @classmethod
-    def create(self, **kwargs):
+    def create(cls, **kwargs):
         """
         We intercept the create call so that we can correctly
         hash the password into an unreadable form
         """
-        quick = 'quick' in kwargs
-        if quick:
+        if 'quick' in kwargs:
             rounds = 1
             size = 1
             kwargs.pop('quick')
@@ -37,10 +36,15 @@ class User(Model):
         kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                    rounds=rounds,
                                                    salt_size=size)
-        if self.objects.filter(username=kwargs['username']).count():
+        if cls.objects.filter(username=kwargs['username']).count():
             raise UniqueException("Username '{}' already in use".format(kwargs['username']))
 
-        return super(User, self).create(**kwargs)
+        # The following does not return a new instance of User, and I have
+        # singularly failed to find out why, as it works elsewhere.
+        #return super(User, cls).create(**kwargs)
+        user = User(**kwargs)
+        user.save()
+        return user
 
     def save(self, **kwargs):
         if "update_fields" in kwargs:

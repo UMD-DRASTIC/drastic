@@ -11,8 +11,7 @@ class NodeTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
     def test_a_create_root(self):
-        Collection.create(name="test_root", parent=None, path="/")
-        coll = Collection.find("test_root")
+        coll = Collection.create(name="test_root", parent=None, path="/")
         assert coll.name == "test_root"
         assert coll.path == '/'
         assert coll.parent is None

@@ -10,8 +10,8 @@ class UserTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
     def test_create(self):
-        User.create(username="test", password="password", email="test@localhost.local", quick=True)
-        user = User.find("test")
+        user = User.create(username="test", password="password", email="test@localhost.local", quick=True)
+
         assert user.username == "test"
         assert user.email == 'test@localhost.local'
         assert user.administrator == False
@@ -20,23 +20,18 @@ class UserTest(unittest.TestCase):
     @raises(UniqueException)
     def test_create_fail(self):
         User.create(username="test", password="password", email="test@localhost.local", quick=True)
-        user = User.find("test")
         User.create(username="test", password="password", email="test@localhost.local", quick=True)
-        user = User.find("test")
 
     def test_authenticate(self):
-        User.create(username="test_auth", password="password", email="test@localhost.local", quick=True)
-        user = User.find("test_auth")
+        user = User.create(username="test_auth", password="password", email="test@localhost.local", quick=True)
         assert user.authenticate("password")
 
     def test_authenticate_fail(self):
-        User.create(username="test_auth_fail", password="password", email="test@localhost.local", quick=True)
-        user = User.find("test_auth")
+        user = User.create(username="test_auth_fail", password="password", email="test@localhost.local", quick=True)
         assert not user.authenticate("not the password")
 
     def test_group_membership(self):
-        User.create(username="test_group", password="password", email="test@localhost.local", groups=[], quick=True)
-        user = User.find("test_group")
+        user = User.create(username="test_group", password="password", email="test@localhost.local", groups=[], quick=True)
         assert user
         group = Group.create(name="test_group_1", owner=user.id)
         user.update(groups=[group.id])

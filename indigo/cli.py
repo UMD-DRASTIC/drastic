@@ -61,6 +61,30 @@ def group_add(cfg, args):
     group = Group.create(name=name, owner=user.id)
     print "Created group '{}' with id: {}".format(name, group.id)
 
+def group_add_user(cfg, args):
+    from indigo.models import Group, User
+    if not args or not len(args) == 2:
+        print "Error: Group Name and Username are required parameters"
+        sys.exit(0)
+
+    group_name, username = args
+    user = User.find(username)
+    group = Group.find(group_name)
+    if not group.id in user.groups:
+        user.groups.append(group.id)
+        user.update(groups=user.groups)
+
+    print "Added {} to {}".format(user.username, group.name)
+
+def group_list(cfg):
+    from indigo.models.group import Group
+    for group in Group.objects.all():
+        print "Name: {}, ID: {}".format(group.name, group.id)
+        for user in group.get_users():
+            print ".ID: {}\tUsername: {}\tAdministrator:{}\tOwner: {}".format(
+                user.id, user.username, ("N", "Y")[user.administrator],
+                ("N", "Y")[user.id==group.owner])
+
 def main():
     args = parse_arguments()
     cfg = get_config(args.config)
@@ -70,11 +94,15 @@ def main():
     command = args.command[0]
     if command == 'create':
         create(cfg)
-    elif command == 'user-add':
+    elif command == 'user-create':
         user_add(cfg, args.command[1:])
     elif command == 'user-list':
         user_list(cfg)
-    elif command == 'group-add':
+    elif command == 'group-create':
         group_add(cfg, args.command[1:])
+    elif command == 'group-list':
+        group_list(cfg)
+    elif command == 'group-add-user':
+        group_add_user(cfg, args.command[1:])
     elif command == 'zap':
         zap(cfg)
