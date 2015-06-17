@@ -33,15 +33,29 @@ class SearchIndex(Model):
                         "to"]
 
     @classmethod
-    def find(cls, termstrings):
+    def find(cls, termstrings, user):
         # termstrings should have been lower cased and cleaned
         from indigo.models.collection import Collection
 
-        def get_object(obj):
+        def get_object(obj, user):
             if obj.object_type == 'Collection':
-                result_obj = Collection.find_by_id(obj.object_id).to_dict()
+                result_obj = Collection.find_by_id(obj.object_id)
+                if not result_obj.user_can(user, "read"):
+                    return None
+
+                result_obj = result_obj.to_dict()
                 result_obj['type'] = 'Collection'
                 return result_obj
+            elif obj.object_type == 'Resource':
+                result_obj = Resource.find_by_id(obj.object_id)
+                # Check the resource's collection for read permission
+                #if not result_obj.user_can(user, "read"):
+                #    return None
+
+                #result_obj = result_obj.to_dict()
+                #result_obj['type'] = 'Resource'
+                #return result_obj
+
             return None
 
         terms = [t for t in termstrings if not cls.is_stop_word(t)]
@@ -54,7 +68,7 @@ class SearchIndex(Model):
 
         results = []
         for result in result_objects:
-            results.append(get_object(result))
+            results.append(get_object(result, user))
         results = filter(lambda x: x, results)
 
         # Do some sane ordering here to group together by ID and
