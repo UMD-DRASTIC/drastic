@@ -93,6 +93,8 @@ class Collection(Model):
         User can perform the action if any of the user's group IDs
         appear in this list for 'action'_access in this object.
         """
+        if user.administrator:
+            return True
         l = getattr(self, '{}_access'.format(action))
         if len(l) and not len(user.groups):
             # Group access required, user not in any groups

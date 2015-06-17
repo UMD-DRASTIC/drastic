@@ -23,6 +23,11 @@ def zap(cfg):
     initialise(keyspace)
     destroy(keyspace)
 
+def user_list(cfg):
+    from indigo.models import User
+    for user in User.objects.all():
+        print "Username: {}, ID: {}".format(user.username, user.id)
+
 def user_add(cfg, username=None):
     from indigo.models import User
     from getpass import getpass
@@ -34,8 +39,6 @@ def user_add(cfg, username=None):
 
     admin = raw_input("Is this an administrator? [y/N] ")
 
-    # Check if user exists and bail if so
-    initialise(cfg.get("KEYSPACE", "indigo"))
     user = User.objects.filter(username=username).first()
     if user:
         print "ERROR: Username {} is already in use".format(username)
@@ -47,15 +50,31 @@ def user_add(cfg, username=None):
 
     print "Success: User with username {} has been created".format(username)
 
+def group_add(cfg, args):
+    from indigo.models import Group, User
+    if not args or not len(args) == 2:
+        print "Error: Group Name and Username are required parameters"
+        sys.exit(0)
+
+    name, username = args
+    user = User.find(username)
+    group = Group.create(name=name, owner=user.id)
+    print "Created group '{}' with id: {}".format(name, group.id)
 
 def main():
     args = parse_arguments()
     cfg = get_config(args.config)
+
+    initialise(cfg.get("KEYSPACE", "indigo"))
 
     command = args.command[0]
     if command == 'create':
         create(cfg)
     elif command == 'user-add':
         user_add(cfg, args.command[1:])
+    elif command == 'user-list':
+        user_list(cfg)
+    elif command == 'group-add':
+        group_add(cfg, args.command[1:])
     elif command == 'zap':
         zap(cfg)
