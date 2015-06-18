@@ -114,8 +114,8 @@ class Collection(Model):
         groups = set(user.groups) - set(l)
         return len(groups) < len(user.groups)
 
-    def to_dict(self):
-        return {
+    def to_dict(self,user=None):
+        data = {
             "id": self.id,
             "name": self.name,
             "parent_id": self.parent,
@@ -124,3 +124,10 @@ class Collection(Model):
             "created": self.create_ts,
             "metadata": [(k,v) for k,v in self.metadata.iteritems()]
         }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+
+        return data

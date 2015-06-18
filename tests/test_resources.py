@@ -32,3 +32,19 @@ class ResourceTest(unittest.TestCase):
         assert resource
         resource = Resource.create(name='test_dupe', container=coll.id)
 
+
+    def test_permission_ok(self):
+        coll = Collection.get_root_collection()
+        user = User.create(username="test_res_user", password="password", email="test@localhost.local", groups=[], quick=True)
+        group = Group.create(name="test_group_resourdce", owner=user.id)
+        user.update(groups=[group.id])
+
+        resource = Resource.create(name='new_test_resource', container=coll.id, read_access=[group.id])
+        assert resource.user_can(user, "read")
+
+    def test_permission_public_ok(self):
+        coll = Collection.get_root_collection()
+        user = User.create(username="test_res_user_public", password="password", email="test@localhost.local", groups=[], quick=True)
+
+        resource = Resource.create(name='new_test_resource_public', container=coll.id)
+        assert resource.user_can(user, "read")
