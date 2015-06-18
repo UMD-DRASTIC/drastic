@@ -36,6 +36,7 @@ class SearchIndex(Model):
     def find(cls, termstrings, user):
         # termstrings should have been lower cased and cleaned
         from indigo.models.collection import Collection
+        from indigo.models.resource import Resource
 
         def get_object(obj, user):
             if obj.object_type == 'Collection':
@@ -44,17 +45,17 @@ class SearchIndex(Model):
                     return None
 
                 result_obj = result_obj.to_dict()
-                result_obj['type'] = 'Collection'
+                result_obj['result_type'] = 'Collection'
                 return result_obj
             elif obj.object_type == 'Resource':
                 result_obj = Resource.find_by_id(obj.object_id)
                 # Check the resource's collection for read permission
-                #if not result_obj.user_can(user, "read"):
-                #    return None
+                if not result_obj.user_can(user, "read"):
+                    return None
 
-                #result_obj = result_obj.to_dict()
-                #result_obj['type'] = 'Resource'
-                #return result_obj
+                result_obj = result_obj.to_dict()
+                result_obj['result_type'] = 'Resource'
+                return result_obj
 
             return None
 

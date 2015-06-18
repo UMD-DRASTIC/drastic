@@ -40,7 +40,7 @@ class Resource(Model):
         # TODO: Handle unicode chars in the name
         kwargs['name'] = kwargs['name'].strip()
         kwargs['create_ts'] = datetime.now()
-
+        kwargs['modified_ts'] = kwargs['create_ts']
         # Check the container exists
         collection = Collection.objects.filter(id=kwargs['container']).first()
         if not collection:
@@ -60,6 +60,7 @@ class Resource(Model):
         """
         if user.administrator:
             return True
+
         l = getattr(self, '{}_access'.format(action))
         if len(l) and not len(user.groups):
             # Group access required, user not in any groups
@@ -85,8 +86,8 @@ class Resource(Model):
     def __unicode__(self):
         return unicode(self.name)
 
-    def to_dict(self):
-        return  {
+    def to_dict(self, user=None):
+        data =   {
             "id": self.id,
             "name": self.name,
             "container_id": self.container,
@@ -96,3 +97,10 @@ class Resource(Model):
             "create_ts": self.create_ts,
             "modified_ts": self.modified_ts
         }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+        return data
+

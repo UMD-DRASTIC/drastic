@@ -4,7 +4,7 @@ from datetime import datetime
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
-from indigo.models import Resource
+from indigo.models.resource import Resource
 from indigo.util import default_id
 from indigo.models.errors import UniqueException
 
