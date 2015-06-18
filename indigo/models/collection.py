@@ -19,6 +19,7 @@ class Collection(Model):
     is_root  = columns.Boolean(default=False, index=True)
     metadata  = columns.Map(columns.Text, columns.Text, index=True)
     create_ts   = columns.DateTime()
+    modified_ts = columns.DateTime()
 
     # The access columns contain lists of group IDs that are allowed
     # the specified permission. If the lists have at least one entry
@@ -53,6 +54,11 @@ class Collection(Model):
                 raise UniqueException("That name is in use in the current collection")
 
         return super(Collection, self).create(**kwargs)
+
+    def update(self, **kwargs):
+        kwargs['modified_ts'] = datetime.now()
+        return super(Collection, self).update(**kwargs)
+
 
     def get_child_collections(self):
         return Collection.objects.filter(parent=self.id).all()
