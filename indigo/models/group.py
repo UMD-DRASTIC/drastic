@@ -19,6 +19,15 @@ class Group(Model):
 
     @classmethod
     def create(self, **kwargs):
+        kwargs['name'] = kwargs['name'].strip()
+
+        # Make sure name id not in use.
+        existing = self.objects.filter(name=kwargs['name']).first()
+        if existing:
+            raise UniqueException("That name is in use in the current collection")
+
+
+
         return super(Group, self).create(**kwargs)
 
     @classmethod

@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from indigo import get_config
+from indigo.models.errors import UniqueException
 from indigo.models import initialise, sync, destroy
 
 def parse_arguments():
@@ -58,7 +59,12 @@ def group_add(cfg, args):
 
     name, username = args
     user = User.find(username)
-    group = Group.create(name=name, owner=user.id)
+    try:
+        group = Group.create(name=name, owner=user.id)
+    except UniqueException:
+        print "A group with that name already exists"
+        return
+
     print "Created group '{}' with id: {}".format(name, group.id)
 
 def group_add_user(cfg, args):
