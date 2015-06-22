@@ -67,6 +67,19 @@ def group_add(cfg, args):
 
     print "Created group '{}' with id: {}".format(name, group.id)
 
+def group_delete(cfg, args):
+    from indigo.models import Group, User
+    if not args or not len(args) == 1:
+        print "Error: Group Name is a required parameters"
+        sys.exit(0)
+
+    name = args[0]
+    group = Group.find(args[0])
+    group.delete()
+
+    print "Deleted group '{}' with id: {}".format(group.name, group.id)
+
+
 def group_add_user(cfg, args):
     from indigo.models import Group, User
     if not args or not len(args) == 2:
@@ -110,5 +123,7 @@ def main():
         group_list(cfg)
     elif command == 'group-add-user':
         group_add_user(cfg, args.command[1:])
+    elif command == 'group-delete':
+        group_delete(cfg, args.command[1:])
     elif command == 'zap':
         zap(cfg)
