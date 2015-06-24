@@ -14,6 +14,7 @@ class Resource(Model):
     checksum  = columns.Text(required=False)
     size      = columns.Integer(required=False, default=0, index=True)
     metadata  = columns.Map(columns.Text, columns.Text, index=True)
+    mimetype  = columns.Text(required=False)
     url       = columns.Text(required=False)
     create_ts   = columns.DateTime()
     modified_ts = columns.DateTime()
@@ -95,7 +96,8 @@ class Resource(Model):
             "size": self.size,
             "metadata": [(k,v) for k,v in self.metadata.iteritems()],
             "create_ts": self.create_ts,
-            "modified_ts": self.modified_ts
+            "modified_ts": self.modified_ts,
+            "mimetype": self.mimetype or "application/octet-stream"
         }
         if user:
             data['can_read'] = self.user_can(user, "read")
