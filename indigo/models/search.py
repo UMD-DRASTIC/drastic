@@ -44,7 +44,7 @@ class SearchIndex(Model):
                 if not result_obj.user_can(user, "read"):
                     return None
 
-                result_obj = result_obj.to_dict()
+                result_obj = result_obj.to_dict(user)
                 result_obj['result_type'] = 'Collection'
                 return result_obj
             elif obj.object_type == 'Resource':
@@ -53,7 +53,7 @@ class SearchIndex(Model):
                 if not result_obj.user_can(user, "read"):
                     return None
 
-                result_obj = result_obj.to_dict()
+                result_obj = result_obj.to_dict(user)
                 result_obj['result_type'] = 'Resource'
                 return result_obj
 
