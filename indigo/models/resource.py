@@ -18,6 +18,8 @@ class Resource(Model):
     url       = columns.Text(required=False)
     create_ts   = columns.DateTime()
     modified_ts = columns.DateTime()
+    file_name = columns.Text(required=False, default="")
+    type       = columns.Text(required=False, default='UNKNOWN')
 
     # The access columns contain lists of group IDs that are allowed
     # the specified permission. If the lists have at least one entry
@@ -97,7 +99,8 @@ class Resource(Model):
             "metadata": [(k,v) for k,v in self.metadata.iteritems()],
             "create_ts": self.create_ts,
             "modified_ts": self.modified_ts,
-            "mimetype": self.mimetype or "application/octet-stream"
+            "mimetype": self.mimetype or "application/octet-stream",
+            "type": self.type
         }
         if user:
             data['can_read'] = self.user_can(user, "read")
