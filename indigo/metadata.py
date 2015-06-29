@@ -26,6 +26,14 @@ RESOURCE_METADATA = []
 COLLECTION_METADATA = []
 
 
+def get_resource_keys(fileobj=None):
+    ensure_metadata(fileobj=fileobj)
+    return [r['name'] for r in RESOURCE_METADATA]
+
+def get_collection_keys(fileobj=None):
+    ensure_metadata(fileobj=fileobj)
+    return [c['name'] for c in COLLECTION_METADATA]
+
 def get_resource_validator(fileobj=None):
     ensure_metadata(fileobj=fileobj)
     return MetadataValidator(RESOURCE_METADATA)
