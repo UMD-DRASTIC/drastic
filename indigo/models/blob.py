@@ -11,9 +11,10 @@ from indigo.util import default_id
 
 
 class Blob(Model):
-    id       = columns.Text(primary_key=True, default=default_id)
-    parts    = columns.List(columns.Text, default=[], index=True)
-    size     = columns.Integer(default=0)
+    id      = columns.Text(primary_key=True, default=default_id)
+    parts   = columns.List(columns.Text, default=[], index=True)
+    size    = columns.Integer(default=0)
+    hash    = columns.Text(default="")
 
     @classmethod
     def find(cls, id):
@@ -29,7 +30,7 @@ class BlobPart(Model):
     blob_id     = columns.Text(index=True)
 
     def length(self):
-        return length(self.content)
+        return len(self.content)
 
     @classmethod
     def find(cls, id):
