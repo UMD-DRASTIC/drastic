@@ -32,5 +32,5 @@ class DriverTest(unittest.TestCase):
         d = get_driver("cassandra://{}".format(b.id))
         assert d
 
-        result = ''.join(chunk for _,chunk in d.chunk_content())
+        result = ''.join(chunk for chunk in d.chunk_content())
         assert result == content

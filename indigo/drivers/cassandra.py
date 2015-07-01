@@ -16,4 +16,4 @@ class CassandraDriver(StorageDriver):
         """
         for idstring in self.blob.parts:
             bp = BlobPart.find(idstring)
-            yield bp.length(), bp.content
+            yield bp.content

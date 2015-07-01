@@ -12,7 +12,6 @@ class StorageDriver(object):
     def chunk_content(self):
         """
         Yields the content for the driver's URL, if any
-        a chunk at a time.  The value yielded is the size of
-        the chunk and the content chunk itself.
+        a chunk at a time.
         """
         pass
