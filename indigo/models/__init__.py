@@ -8,6 +8,7 @@ from indigo.models.collection import Collection
 from indigo.models.search import SearchIndex
 from indigo.models.resource import Resource
 from indigo.models.blob import Blob, BlobPart
+from indigo.models.activity import Activity
 
 def initialise(keyspace, strategy="SimpleStrategy", repl_factor=1):
     connection.setup(['127.0.0.1'], keyspace, protocol_version=3)
@@ -22,6 +23,7 @@ def sync():
     sync_table(SearchIndex)
     sync_table(Blob)
     sync_table(BlobPart)
+    sync_table(Activity)
 
 def destroy(keyspace):
     drop_keyspace(keyspace)
