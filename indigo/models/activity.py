@@ -13,12 +13,9 @@ def default_time():
     return columns.TimeUUID.from_datetime(datetime.now())
 
 def default_date():
-    # yymmddhh
-    dt = datetime.now()
-    return dt.strftime("%y%m%d")
+    return datetime.now().strftime("%y%m%d")
 
 def last_x_days(days=5):
-    # yymmddhh
     dt = datetime.now()
     dates = [dt + timedelta(days=-x) for x in xrange(1,5)] + [dt]
     return [d.strftime("%y%m%d") for d in dates]
@@ -26,13 +23,18 @@ def last_x_days(days=5):
 class Activity(Model):
     id      = columns.Text(default=default_date, primary_key=True)
     html    = columns.Text()
-    when    = columns.TimeUUID(primary_key=True, default=default_time, clustering_order="DESC")
+    when    = columns.TimeUUID(primary_key=True,
+                               default=default_time,
+                               clustering_order="DESC")
+
+    @classmethod
+    def new(cls, content):
+        return cls.create(html=content)
 
     @classmethod
     def recent(cls, count=20):
-        last_days = last_x_days()
-        return Activity.objects.filter(id__in=last_x_days()).order_by("when").all().limit(count)
-        # .order_by("-when").all().limit(count)
+        return Activity.objects.filter(id__in=last_x_days())\
+            .order_by("-when").all().limit(count)
 
     def __unicode__(self):
         return unicode(self.html)
