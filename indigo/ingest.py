@@ -45,7 +45,15 @@ class Ingester(object):
         self.collection_cache = {}
 
     def create_collection(self, name, path, parent):
-        c = Collection.create(name=name, path=path, parent=parent)
+        d = {}
+        d['path'] = path
+        d['name'] = name
+        d['parent'] = parent
+        d['write_access']  = self.groups
+        d['delete_access'] = self.groups
+        d['edit_access']   = self.groups
+
+        c = Collection.create(**d)
         self.collection_cache[path] = c
         return c
 
