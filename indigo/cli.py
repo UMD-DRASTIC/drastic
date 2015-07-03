@@ -5,13 +5,20 @@ from indigo import get_config
 from indigo.models.errors import UniqueException
 from indigo.models import initialise, sync, destroy
 
+from indigo.ingest import do_ingest
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Interact with the indigo system')
     parser.add_argument('command', type=str, metavar="N", nargs="+",
                        help='The command to run')
     parser.add_argument('--config', '-c', dest='config', action='store',
                        help='Specify the location of the configuration file')
-
+    parser.add_argument('--group', '-g', dest='group', action='store',
+                       help='Specify the group name for ingestion of data')
+    parser.add_argument('--user', '-u', dest='user', action='store',
+                       help='Specify the username for ingestion of data')
+    parser.add_argument('--folder', dest='folder', action='store',
+                       help='Specify the root folder to ingest from on disk')
     return parser.parse_args()
 
 
@@ -127,3 +134,5 @@ def main():
         group_delete(cfg, args.command[1:])
     elif command == 'zap':
         zap(cfg)
+    elif command == 'ingest':
+        do_ingest(cfg, args)

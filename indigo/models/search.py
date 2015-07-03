@@ -99,7 +99,7 @@ class SearchIndex(Model):
         result_count = 0
 
         def clean(t):
-            return t.lower().replace('_', ' ').split(' ')
+            return t.lower().replace('.', ' ').replace('_', ' ').split(' ')
 
         terms = []
         for f in fields:

@@ -1,6 +1,7 @@
 """
 """
 import uuid
+import hashlib
 from datetime import datetime
 
 from cassandra.cqlengine import columns
@@ -19,6 +20,26 @@ class Blob(Model):
     @classmethod
     def find(cls, id):
         return cls.objects.filter(id=id).first()
+
+    @classmethod
+    def create_from_file(cls, fileobj, size):
+        blob = cls.create(size=size)
+        hasher = hashlib.sha256()
+
+        chunk_size = 1024 * 1024 * 1
+        parts = []
+        while True:
+            data = fileobj.read(chunk_size)
+            if not data:
+                break
+            part = BlobPart.create(content=data, blob_id=blob.id)
+            parts.append(part.id)
+
+            hasher.update(data)
+
+        blob.update(parts=parts, hash=hasher.hexdigest())
+        return blob
+
 
     def __unicode__(self):
         return unicode(self.id)
