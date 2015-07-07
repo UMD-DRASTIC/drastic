@@ -101,7 +101,8 @@ class Resource(Model):
             "modified_ts": self.modified_ts,
             "mimetype": self.mimetype or "application/octet-stream",
             "type": self.type,
-            "filename": self.file_name
+            "filename": self.file_name,
+            "url": self.url,
         }
         if user:
             data['can_read'] = self.user_can(user, "read")

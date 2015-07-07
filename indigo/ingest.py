@@ -32,17 +32,22 @@ def do_ingest(cfg, args):
     if not os.path.exists(path):
         print u"Could not find path {}".format(path)
 
-    ingester = Ingester(user, group, path)
+    local_ip = args.local_ip
+    skip_import = args.no_import
+
+    ingester = Ingester(user, group, path, local_ip, skip_import)
     ingester.start()
 
 
 class Ingester(object):
 
-    def __init__(self, user, group, folder):
+    def __init__(self, user, group, folder, local_ip='127.0.0.1', skip_import=False):
         self.groups = [group.id]
         self.user = user
         self.folder = folder
         self.collection_cache = {}
+        self.skip_import = skip_import
+        self.local_ip = local_ip
 
     def create_collection(self, name, path, parent):
         d = {}
@@ -155,11 +160,23 @@ class Ingester(object):
 
                 if not resource.url:
                     # Upload the file content as blob and blobparts!
-                    with open(fullpath, 'r') as f:
-                        print "    Creating blob for resource..."
-                        blob = Blob.create_from_file(f, rdict['size'])
-                        if blob:
-                            resource.update(url="cassandra://{}".format(blob.id))
+                    # TODO: Allow this file to stay where it is and reference it
+                    # with IP and path.
+                    if self.skip_import:
+                        # Specify a URL for this resource to point to the agent on this
+                        # machine.  It's important that the agent is configured with the
+                        # same root folder as the one where we import.
+                        print "    Creating URL entry for resource"
+                        url = "file://{}{}".format(self.local_ip, path + entry)
+                        resource.update(url=url)
+
+                    else:
+                        # Push the file into Cassandra
+                        with open(fullpath, 'r') as f:
+                            print "    Creating blob for resource..."
+                            blob = Blob.create_from_file(f, rdict['size'])
+                            if blob:
+                                resource.update(url="cassandra://{}".format(blob.id))
 
                 SearchIndex.reset(resource.id)
                 SearchIndex.index(resource, ['name', 'metadata'])

@@ -100,7 +100,7 @@ class MetadataValidator(object):
             choices = self.rules[k].get('choices', [])
             if not err and choices and not v in choices:
                 if v.strip() or required:
-                    validation_errors.append(u'{} is not a valid option for this field'.format(v.strip() or '""'))
+                    validation_errors.append(u'{} is not a valid option for the {} field, choices are: {}'.format(v.strip() or '""', k, ','.join(choices)))
                     err = True
 
         return len(validation_errors) == 0, validation_errors

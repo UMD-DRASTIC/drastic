@@ -19,6 +19,11 @@ def parse_arguments():
                        help='Specify the username for ingestion of data')
     parser.add_argument('--folder', dest='folder', action='store',
                        help='Specify the root folder to ingest from on disk')
+    parser.add_argument('--noimport', dest='no_import', action='store_true',
+                       help='Set if we do not want to import the files into Cassandra')
+
+    parser.add_argument('--localip', dest='local_ip', action='store',
+                       help='Specify the IP address for this machine (subnets/private etc)')
     return parser.parse_args()
 
 
