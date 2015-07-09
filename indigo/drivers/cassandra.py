@@ -1,3 +1,5 @@
+from cStringIO import StringIO
+import zipfile
 
 from indigo.drivers.base import StorageDriver
 from indigo.models.blob import Blob, BlobPart
@@ -16,4 +18,12 @@ class CassandraDriver(StorageDriver):
         """
         for idstring in self.blob.parts:
             bp = BlobPart.find(idstring)
-            yield bp.content
+            if bp.compressed:
+                data = StringIO(bp.content)
+                z = zipfile.ZipFile(data, 'r')
+                content = z.read("data")
+                data.close()
+                z.close()
+                yield content
+            else:
+                yield bp.content

@@ -48,6 +48,7 @@ class Blob(Model):
 class BlobPart(Model):
     id       = columns.Text(primary_key=True, default=default_id)
     content  = columns.Bytes()
+    compressed = columns.Boolean(default=False)
     blob_id     = columns.Text(index=True)
 
     def length(self):
