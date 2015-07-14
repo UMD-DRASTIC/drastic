@@ -12,7 +12,7 @@ def get_config(module_name=None):
         variable.
     """
     if not module_name:
-        module_name = os.environ.get("INDIGO_CONFIG")
+        module_name = os.environ.get("INDIGO_CONFIG", "settings")
     if not module_name:
         raise Exception("Unable to locate configuration module")
 
