@@ -48,6 +48,7 @@ class IterStreamer(object):
         return self.iterator
 
     def next(self):
+        print "Asked for next...."
         return self.iterator.next()
 
     def read(self, size):

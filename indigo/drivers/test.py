@@ -17,7 +17,7 @@ class TestDriver(StorageDriver):
 
         test://path/to/file
         """
-        with open(self.url, 'r') as f:
+        with open(self.url, 'rb') as f:
             while True:
                 data = f.read(TestDriver.chunk_size)
                 if not data:
