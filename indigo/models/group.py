@@ -14,7 +14,7 @@ from indigo.util import default_id
 
 class Group(Model):
     id       = columns.Text(primary_key=True, default=default_id)
-    name = columns.Text(required=True, index=True)
+    name     = columns.Text(required=True, index=True)
     owner    = columns.Text(required=True)
 
     @classmethod

@@ -1,9 +1,11 @@
 from indigo.drivers.filesystem import FileSystemDriver
 from indigo.drivers.cassandra import CassandraDriver
+from indigo.drivers.test import TestDriver
 
 DRIVERS = {
     "cassandra": CassandraDriver,
     "file": FileSystemDriver,
+    "test": TestDriver,
 }
 
 def get_driver(url):
