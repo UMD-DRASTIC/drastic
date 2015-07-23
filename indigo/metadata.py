@@ -61,9 +61,7 @@ def ensure_metadata(reload=False, fileobj=None):
         RESOURCE_METADATA = obj['resources']
         COLLECTION_METADATA = obj['collections']
     except Exception, e:
-        raise e
         print "$INDIGO_METADATA is not set"
-        sys.exit(1)
 
 class MetadataValidator(object):
     """
