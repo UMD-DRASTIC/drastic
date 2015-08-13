@@ -8,6 +8,7 @@ from indigo.models.user import User
 from indigo.models.group import Group
 from indigo.models.collection import Collection
 from indigo.models.resource import Resource
+from indigo.models.errors import UniqueException
 
 SKIP = (".pyc",)
 
@@ -108,7 +109,7 @@ class Ingester(object):
         self.collection_cache["/"] = root_collection
 
         paths = []
-        for (path, dirs, files) in os.walk(self.folder, topdown=True):
+        for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks = True ):
             if '/.' in path: continue # Ignore .paths
             paths.append(path)
 
@@ -146,19 +147,20 @@ class Ingester(object):
                 rdict = self.resource_for_file(fullpath)
                 rdict["container"] = current_collection.id
 
-                resource = None
-                existing = Resource.objects.filter(container=current_collection.id).all()
-                for e in existing:
-                    if e.name == rdict['name']:
-                        resource = e
-                        break
-
-                if not resource:
-                    # Create the resource
-                    print "  Creating the resource"
+                # MOSTLY the resource will not exist... so do it this way.
+                try:
                     resource = Resource.create(**rdict)
+                except UniqueException  as excpt:
+                    # allow_filtering is used because either we filter close to the data, or fetch eveything and filter here
+                    # and some of the directories in the wild are huge ( many tens of thousands of entries ).
+                    existing = Resource.objects.allow_filtering().filter(container=current_collection.id,name=rdict['name']).all()
+                    for e  in existing :
+                        if e.name == rdict['name']:
+                            resource = e
+                            break
 
                 if not resource.url:
+
                     # Upload the file content as blob and blobparts!
                     # TODO: Allow this file to stay where it is and reference it
                     # with IP and path.
