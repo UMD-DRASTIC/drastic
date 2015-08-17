@@ -1,6 +1,6 @@
 # Indigo
 
-This is a shared library for sharing functionality between various components in a running Indigo system.  It is intended to be included by the [indigo-web](https://bitbucket.org/archivea/indigo-web) and [indigo-agent] (https://bitbucket.org/archivea/indigo-agent) components.
+This is a shared library for sharing functionality between various components in a running Indigo system.  It is intended to be included by the [indigo-web](https://bitbucket.org/archivea/indigo-web) and [indigo-agent](https://bitbucket.org/archivea/indigo-agent) components.
 
 ## Configuration
 
