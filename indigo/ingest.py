@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from mimetypes import guess_type
 
 from indigo.models.search import SearchIndex
@@ -9,6 +10,10 @@ from indigo.models.group import Group
 from indigo.models.collection import Collection
 from indigo.models.resource import Resource
 from indigo.models.errors import UniqueException
+
+#Queue/Thread
+from Queue import Queue
+from threading import Thread
 
 SKIP = (".pyc",)
 
@@ -101,7 +106,14 @@ class Ingester(object):
         so multiple copies of this program can be run in parallel (each
         with a different root folder).
         """
-
+        self.queue = initializeThreading()
+        self.doWork()
+        terminateThreading(self.queue)
+    def Create_Entry(self,rdict, context, do_load):
+        self.queue.put( (rdict.copy(),context.copy(),do_load) )
+        return
+    def doWork(self):
+        TIMER = timer_counter()
 
         root_collection = Collection.get_root_collection()
         if not root_collection:
@@ -124,15 +136,17 @@ class Ingester(object):
             name, parent_path = name_and_parent_path(path)
 
             print "Processing {} with name '{}'".format(path, name)
-            print "  Parent path is {}".format(parent_path)
+            #print "  Parent path is {}".format(parent_path)
 
             if name:
+                TIMER.enter('get-collection')
                 parent = self.get_collection(parent_path)
-                print "  Parent collection is {}".format(parent)
+                #print "  Parent collection is {}".format(parent)
 
                 current_collection = self.get_collection(path)
                 if not current_collection:
                     current_collection = self.create_collection(name, path, parent.id)
+                TIMER.exit('get-collection')
             else:
                 current_collection = root_collection
 
@@ -146,46 +160,98 @@ class Ingester(object):
 
                 rdict = self.resource_for_file(fullpath)
                 rdict["container"] = current_collection.id
-
-                # MOSTLY the resource will not exist... so do it this way.
-                try:
-                    resource = Resource.create(**rdict)
-                except UniqueException  as excpt:
-                    # allow_filtering is used because either we filter close to the data, or fetch eveything and filter here
-                    # and some of the directories in the wild are huge ( many tens of thousands of entries ).
-                    existing = Resource.objects.allow_filtering().filter(container=current_collection.id,name=rdict['name']).all()
-                    for e  in existing :
-                        if e.name == rdict['name']:
-                            resource = e
-                            break
-
-                if not resource.url:
-
-                    # Upload the file content as blob and blobparts!
-                    # TODO: Allow this file to stay where it is and reference it
-                    # with IP and path.
-                    if self.skip_import:
-                        # Specify a URL for this resource to point to the agent on this
-                        # machine.  It's important that the agent is configured with the
-                        # same root folder as the one where we import.
-                        print "    Creating URL entry for resource"
-                        url = "file://{}{}".format(self.local_ip, path + entry)
-                        resource.update(url=url)
-
-                    else:
-                        # Push the file into Cassandra
-                        with open(fullpath, 'r') as f:
-                            print "    Creating blob for resource..."
-                            blob = Blob.create_from_file(f, rdict['size'])
-                            if blob:
-                                resource.update(url="cassandra://{}".format(blob.id))
-
-                SearchIndex.reset(resource.id)
-                SearchIndex.index(resource, ['name', 'metadata'])
+                TIMER.enter('push')
+                self.Create_Entry( rdict,
+                       dict(fullpath=fullpath,
+                            collection=current_collection.id ,
+                            local_ip=self.local_ip,
+                            path = path,
+                            entry = entry
+                            ) ,
+                       not self.skip_import)
+                TIMER.exit('push')
 
 
 
+#### Heavy Lifting
+
+
+def initializeThreading(ctr=8) :
+    CreateQueue = Queue(maxsize=200)   # Create a queue on which to put the create requests
+    for k in range( abs(ctr) ) :
+        t = ThreadClass(CreateQueue)    # Create a number of threads
+        t.setDaemon(True)               # Stops us finishing until all the threads gae exited
+        t.start()                       # let it rip
+    return CreateQueue
+
+def terminateThreading(queue):
+    from time import time
+    T0 = time()
+    queue.join()
+    print time() - T0,'seconds to wrap up outstanding'
 
 
 
+class ThreadClass(Thread) :
+    def __init__(self,q) :
+        Thread.__init__(self)
+        self.queue = q
+    def run(self) :
+        while True :
+            args = self.queue.get()
+            Process_Create_Entry(*args)
+            self.queue.task_done()
+
+
+def Process_Create_Entry(rdict, context, do_load ):
+    # MOSTLY the resource will not exist... so do it this way.
+    try:
+        resource = Resource.create(**rdict)
+    except UniqueException as excpt:
+        # allow_filtering is used because either we filter close to the data, or fetch eveything and filter here
+        # and some of the directories in the wild are huge ( many tens of thousands of entries ).
+        existing = Resource.objects.allow_filtering().filter(container=context['collection'],name=rdict['name']).all()
+        for e  in existing :
+            if e.name == rdict['name']:
+                resource = e
+                break
+
+    if not resource.url:
+
+        # Upload the file content as blob and blobparts!
+        # TODO: Allow this file to stay where it is and reference it
+        # with IP and path.
+
+        if not do_load :
+            # Specify a URL for this resource to point to the agent on this
+            # machine.  It's important that the agent is configured with the
+            # same root folder as the one where we import.
+            url = "file://{}{}".format(context['local_ip'], context['path'] + context['entry'])
+            print 'adding '+url
+            resource.update(url=url)
+
+        else:
+            # Push the file into Cassandra
+            with open(context['fullpath'], 'r') as f:
+                blob = Blob.create_from_file(f, rdict['size'])
+                if blob:
+                    resource.update(url="cassandra://{}".format(blob.id))
+
+    SearchIndex.reset(resource.id)
+    SearchIndex.index(resource, ['name', 'metadata'])
+
+
+class timer_counter(dict):
+    # Store triples of current start time, count and total time
+    def enter(self,tag):
+        rcd = self.get(tag,[0 , 0 , 0.0])
+        rcd[0] = time.time()
+        rcd[1] += 1
+        self[tag] = rcd
+    def exit(self,tag):
+        rcd = self.get(tag,[time.time() , 1 , 0.0])
+        rcd[2] += ( time.time() - rcd[0])
+    def summary(self):
+        for t,v in self.items() :
+            print '{0:15s}:total:{3}, count:{2}'.format(t,*v)
 
