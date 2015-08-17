@@ -141,7 +141,3 @@ def main():
         zap(cfg)
     elif command == 'ingest':
         do_ingest(cfg, args)
-
-
-
-sys.exit(main() )
