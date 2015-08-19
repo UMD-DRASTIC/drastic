@@ -54,6 +54,18 @@ class Collection(Model):
 
         return super(Collection, self).create(**kwargs)
 
+    @classmethod
+    def delete_all(self, id):
+        parent_coll = Collection.find_by_id(id)
+        colls = list(parent_coll.get_child_collections())
+        rescs = list(parent_coll.get_child_resources())
+        
+        for resc in rescs:
+            resc.delete()
+        for coll in colls:
+            Collection.delete_all(coll.id)
+        parent_coll.delete()
+
     def update(self, **kwargs):
         kwargs['modified_ts'] = datetime.now()
         return super(Collection, self).update(**kwargs)
