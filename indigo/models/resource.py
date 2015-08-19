@@ -1,10 +1,10 @@
-import uuid
 from datetime import datetime
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.errors import UniqueException, NoSuchCollection
+import indigo.models.collection
 from indigo.util import default_id
 
 class Resource(Model):
@@ -38,14 +38,13 @@ class Resource(Model):
         and a container. There is little chance of getting trustworthy
         versions of any of the other data at creation stage.
         """
-        from indigo.models.collection import Collection
 
         # TODO: Handle unicode chars in the name
         kwargs['name'] = kwargs['name'].strip()
         kwargs['create_ts'] = datetime.now()
         kwargs['modified_ts'] = kwargs['create_ts']
         # Check the container exists
-        collection = Collection.objects.filter(id=kwargs['container']).first()
+        collection = indigo.models.collection.Collection.objects.filter(id=kwargs['container']).first()
         if not collection:
             raise NoSuchCollection("That collection does not exist")
 
@@ -55,6 +54,17 @@ class Resource(Model):
             raise UniqueException("That name is in use in the current collection")
 
         return super(Resource, self).create(**kwargs)
+
+    def get_container(self):
+        """
+        Returns the Collection object for the parent of the resource.
+        """
+        # Check the container exists
+        container = indigo.models.collection.Collection.objects.filter(id=self.container).first()
+        if not container:
+            raise NoSuchCollection("That collection does not exist")
+        else:
+            return container
 
     def user_can(self, user, action):
         """
