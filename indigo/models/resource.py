@@ -12,7 +12,7 @@ class Resource(Model):
     name      = columns.Text(required=True, index=True)
     container = columns.Text(required=True, index=True)
     checksum  = columns.Text(required=False)
-    size      = columns.Integer(required=False, default=0, index=True)
+    size      = columns.BigInt(required=False, default=0, index=True)
     metadata  = columns.Map(columns.Text, columns.Text, index=True)
     mimetype  = columns.Text(required=False)
     url       = columns.Text(required=False)
