@@ -5,7 +5,7 @@ from indigo import get_config
 from indigo.models.errors import UniqueException
 from indigo.models import initialise, sync, destroy
 
-from indigo.ingest import do_ingest
+from ingest import do_ingest
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Interact with the indigo system')
