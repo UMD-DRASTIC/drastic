@@ -46,6 +46,21 @@ class User(Model):
         user.save()
         return user
 
+    def update(self, **kwargs):
+        # If we want to update the password we need to encrypt it first
+        if "password" in kwargs:
+            if 'quick' in kwargs:
+                rounds = 1
+                size = 1
+                kwargs.pop('quick')
+            else:
+                rounds = 200000
+                size = 16
+            kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
+                                                       rounds=rounds,
+                                                       salt_size=size)
+        super(User, self).update(**kwargs)
+
     def save(self, **kwargs):
         if "update_fields" in kwargs:
             del kwargs["update_fields"]
