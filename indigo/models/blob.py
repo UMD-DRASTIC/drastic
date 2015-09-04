@@ -8,11 +8,11 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.errors import UniqueException
-from indigo.util import default_id
+from indigo.util import default_uuid
 
 
 class Blob(Model):
-    id      = columns.Text(primary_key=True, default=default_id)
+    id      = columns.Text(primary_key=True, default=default_uuid)
     parts   = columns.List(columns.Text, default=[], index=True)
     size    = columns.Integer(default=0)
     hash    = columns.Text(default="")
@@ -46,7 +46,7 @@ class Blob(Model):
 
 
 class BlobPart(Model):
-    id       = columns.Text(primary_key=True, default=default_id)
+    id       = columns.Text(primary_key=True, default=default_uuid)
     content  = columns.Bytes()
     compressed = columns.Boolean(default=False)
     blob_id     = columns.Text(index=True)

@@ -1,25 +1,30 @@
 from datetime import datetime
+import os.path
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.errors import UniqueException, NoSuchCollection
 import indigo.models.collection
-from indigo.util import default_id
+from indigo.util import (
+    default_cdmi_id,
+    merge,
+    split
+)
 
 class Resource(Model):
-    id        = columns.Text(primary_key=True, default=default_id)
-    name      = columns.Text(required=True, index=True)
-    container = columns.Text(required=True, index=True)
-    checksum  = columns.Text(required=False)
-    size      = columns.BigInt(required=False, default=0, index=True)
-    metadata  = columns.Map(columns.Text, columns.Text, index=True)
-    mimetype  = columns.Text(required=False)
-    url       = columns.Text(required=False)
-    create_ts   = columns.DateTime()
+    id = columns.Text(default=default_cdmi_id, index=True)
+    container = columns.Text(primary_key=True, required=True)
+    name = columns.Text(primary_key=True, required=True)
+    checksum = columns.Text(required=False)
+    size = columns.BigInt(required=False, default=0, index=True)
+    metadata = columns.Map(columns.Text, columns.Text, index=True)
+    mimetype = columns.Text(required=False)
+    url = columns.Text(required=False)
+    create_ts = columns.DateTime()
     modified_ts = columns.DateTime()
     file_name = columns.Text(required=False, default="")
-    type       = columns.Text(required=False, default='UNKNOWN')
+    type = columns.Text(required=False, default='UNKNOWN')
 
     # The access columns contain lists of group IDs that are allowed
     # the specified permission. If the lists have at least one entry
@@ -44,7 +49,8 @@ class Resource(Model):
         kwargs['create_ts'] = datetime.now()
         kwargs['modified_ts'] = kwargs['create_ts']
         # Check the container exists
-        collection = indigo.models.collection.Collection.objects.filter(id=kwargs['container']).first()
+        #collection = indigo.models.collection.Collection.objects.filter(container=kwargs['container']).first()
+        collection = indigo.models.collection.Collection.find_by_path(kwargs['container'])
         if not collection:
             raise NoSuchCollection("That collection does not exist")
 
@@ -60,7 +66,7 @@ class Resource(Model):
         Returns the Collection object for the parent of the resource.
         """
         # Check the container exists
-        container = indigo.models.collection.Collection.objects.filter(id=self.container).first()
+        container = indigo.models.collection.Collection.find_by_path(self.container)
         if not container:
             raise NoSuchCollection("That collection does not exist")
         else:
@@ -96,14 +102,23 @@ class Resource(Model):
     def find_by_id(self, idstring):
         return self.objects.filter(id=idstring).first()
 
+    @classmethod
+    def find_by_path(self, path):
+        coll_name, resc_name = split(path)
+        return self.objects.filter(container=coll_name, name=resc_name).first()
+        
     def __unicode__(self):
-        return unicode(self.name)
+        return self.path()
+
+    def path(self):
+        return merge(self.container, self.name)
 
     def to_dict(self, user=None):
         data =   {
             "id": self.id,
             "name": self.name,
-            "container_id": self.container,
+            "container": self.container,
+            "path": self.path(),
             "checksum": self.checksum,
             "size": self.size,
             "metadata": [(k,v) for k,v in self.metadata.iteritems()],

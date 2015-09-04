@@ -7,7 +7,6 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.errors import UniqueException
-from indigo.util import default_id
 
 def default_time():
     return columns.TimeUUID.from_datetime(datetime.now())

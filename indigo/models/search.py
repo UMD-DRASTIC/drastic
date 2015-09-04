@@ -16,11 +16,11 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.errors import UniqueException
-from indigo.util import default_id
+from indigo.util import default_uuid
 
 
 class SearchIndex(Model):
-    id        = columns.Text(primary_key=True, default=default_id)
+    id        = columns.Text(primary_key=True, default=default_uuid)
     term        = columns.Text(required=True, index=True)
     object_type = columns.Text(required=True)
     object_id   = columns.Text(required=True, index=True)

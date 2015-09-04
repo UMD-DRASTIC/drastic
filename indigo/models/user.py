@@ -8,11 +8,11 @@ from passlib.hash import pbkdf2_sha256
 
 from indigo.models.group import Group
 from indigo.models.errors import UniqueException
-from indigo.util import default_id
+from indigo.util import default_uuid
 
 
 class User(Model):
-    id       = columns.Text(primary_key=True, default=default_id)
+    id       = columns.Text(primary_key=True, default=default_uuid)
     username = columns.Text(required=True, index=True)
     email    = columns.Text(required=True)
     password = columns.Text(required=True)
