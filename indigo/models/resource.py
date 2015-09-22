@@ -1,5 +1,9 @@
 from datetime import datetime
 import os.path
+try:
+    import json
+except ImportError:
+    import simplejson as json
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
@@ -96,6 +100,18 @@ class Resource(Model):
 
     def update(self, **kwargs):
         kwargs['modified_ts'] = datetime.now()
+        
+        # We store the metadata value as JSON to allow more complex types
+        d = {}
+        for key, value in kwargs.get('metadata', {}).iteritems():
+            if not value:
+                continue
+            if isinstance(value, str):
+                value = unicode(value)
+            json_val = {}
+            json_val["json"] = value
+            d[key] = json.dumps(json_val)
+        kwargs['metadata'] = d
         return super(Resource, self).update(**kwargs)
 
     @classmethod
@@ -106,12 +122,42 @@ class Resource(Model):
     def find_by_path(self, path):
         coll_name, resc_name = split(path)
         return self.objects.filter(container=coll_name, name=resc_name).first()
-        
+
+    def get_metadata(self):
+        md = {}
+        for k, v in self.metadata.items():
+            try:
+                val_json = json.loads(v)
+                val = val_json.get('json', '')
+                if val:
+                    md[k] = val
+            except ValueError:
+                md[k] = v
+        return md
+
+
     def __unicode__(self):
         return self.path()
 
     def path(self):
         return merge(self.container, self.name)
+
+    def md_to_list(self):
+        res = []
+        for k,v in self.metadata.iteritems():
+            try:
+                val_json = json.loads(v)
+                val = val_json.get('json', '')
+                if isinstance(val, list):
+                    for el in val:
+                        res.append((k, el))
+                else:
+                    if val:
+                        res.append((k, val))
+            except ValueError:
+                if v:
+                    res.append((k, v))
+        return res
 
     def to_dict(self, user=None):
         data =   {
@@ -121,7 +167,7 @@ class Resource(Model):
             "path": self.path(),
             "checksum": self.checksum,
             "size": self.size,
-            "metadata": [(k,v) for k,v in self.metadata.iteritems()],
+            "metadata": self.md_to_list(),
             "create_ts": self.create_ts,
             "modified_ts": self.modified_ts,
             "mimetype": self.mimetype or "application/octet-stream",

@@ -1,6 +1,7 @@
 from indigo.drivers.filesystem import FileSystemDriver
 from indigo.drivers.cassandra import CassandraDriver
 from indigo.drivers.test import TestDriver
+from indigo.models.errors import NoSuchDriverException
 
 DRIVERS = {
     "cassandra": CassandraDriver,
@@ -24,6 +25,3 @@ def parse_url(url):
     from urlparse import urlparse
     u = urlparse(url)
     return u.scheme, u"{}{}".format(u.netloc, u.path)
-
-class NoSuchDriverException(BaseException):
-    pass

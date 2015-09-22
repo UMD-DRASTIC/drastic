@@ -40,7 +40,6 @@ class Blob(Model):
         blob.update(parts=parts, hash=hasher.hexdigest())
         return blob
 
-
     def __unicode__(self):
         return unicode(self.id)
 

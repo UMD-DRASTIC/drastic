@@ -108,17 +108,6 @@ def default_cdmi_id():
 def default_uuid():
     return unicode(uuid.uuid4())
 
-def split(path):
-    coll_name = os.path.dirname(path)
-    resc_name = os.path.basename(path)
-    return (coll_name, resc_name)
-
-def merge(coll_name, resc_name):
-    if coll_name == '/':
-        # For root we don't add the extra '/'
-        return unicode("{}{}".format(coll_name, resc_name))
-    else:
-        return unicode("{}/{}".format(coll_name, resc_name))
 
 class memoized(object):
    '''Decorator. Caches a function's return value each time it is called.
@@ -182,3 +171,16 @@ class IterStreamer(object):
             self.leftover = data[size:]
 
         return data[:size]
+
+def split(path):
+    coll_name = os.path.dirname(path)
+    resc_name = os.path.basename(path)
+    return (coll_name, resc_name)
+
+
+def merge(coll_name, resc_name):
+    if coll_name == '/':
+        # For root we don't add the extra '/'
+        return unicode("{}{}".format(coll_name, resc_name))
+    else:
+        return unicode("{}/{}".format(coll_name, resc_name))

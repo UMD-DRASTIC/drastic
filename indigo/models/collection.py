@@ -1,6 +1,13 @@
 from datetime import datetime
+try:
+    import json
+except ImportError:
+    import simplejson as json
 
-from cassandra.cqlengine import columns
+from cassandra.cqlengine import (
+    columns,
+    ValidationError
+)
 from cassandra.cqlengine.models import Model
 
 from indigo.models.resource import Resource
@@ -9,7 +16,13 @@ from indigo.util import (
     merge,
     split
 )
-from indigo.models.errors import UniqueException
+from indigo.acl import serialize_acl_metadata
+from indigo.models.errors import (
+    ContainerAlreadyExistsException,
+    DataObjectAlreadyExistsException,
+    NoSuchContainerException,
+    UniqueException
+)
 
 
 class Collection(Model):
@@ -33,28 +46,26 @@ class Collection(Model):
     @classmethod
     def create(self, **kwargs):
         """We intercept the create call"""
-
         # TODO: Handle unicode chars in the name
-        kwargs['name'] = kwargs['name'].strip()
-#         if kwargs.has_key('path'):
-#             kwargs['path'] = kwargs['path'].strip()
-#         else:
-#             kwargs['path'] = "{}{}/".format(kwargs['parent'],
-#                                             kwargs['name'])
+        container = kwargs.get('container', '/').strip()
+        name = kwargs.get('name').strip()
+        
+        kwargs['name'] = name
+        kwargs['container'] = container
         d = datetime.now()
         kwargs['create_ts'] = d
         kwargs['modified_ts'] = d
-
-        # TODO: raise Exception if path already exists
-#         if not kwargs.get('parent'):
-#             kwargs['path'] = u'/'
-#         else:
-#             parent = Collection.find_by_name(kwargs['parent'])
-# 
-#             # Make sure parent/name are not in use.
-#             existing = self.objects.filter(parent=parent.id).all()
-#             if kwargs['name'] in [e['name'] for e in existing]:
-#                 raise UniqueException("That name is in use in the current collection")
+        
+        # Check if parent collection exists
+        parent = Collection.find_by_path(container)
+        if parent is None:
+            raise NoSuchContainerException(container)
+        resource = Resource.find_by_path(merge(container, name))
+        if resource is not None:
+            raise DataObjectAlreadyExistsException(container)
+        collection = Collection.find_by_path(merge(container, name))
+        if resource is not None:
+            raise ContainerAlreadyExistsException(container)
 
         return super(Collection, self).create(**kwargs)
 
@@ -84,6 +95,18 @@ class Collection(Model):
 
     def update(self, **kwargs):
         kwargs['modified_ts'] = datetime.now()
+        
+        # We store the metadata value as JSON to allow more complex types
+        d = {}
+        for key, value in kwargs.get('metadata', {}).iteritems():
+            if not value:
+                continue
+            if isinstance(value, str):
+                value = unicode(value)
+            json_val = {}
+            json_val["json"] = value
+            d[key] = json.dumps(json_val)
+        kwargs['metadata'] = d
         return super(Collection, self).update(**kwargs)
 
     def get_child_collections(self):
@@ -108,6 +131,22 @@ class Collection(Model):
     @classmethod
     def find(self, path):
         return self.find_by_path(path)
+    
+    def get_metadata(self):
+        md = {}
+        for k, v in self.metadata.items():
+            try:
+                val_json = json.loads(v)
+                val = val_json.get('json', '')
+                if val:
+                    md[k] = val
+            except ValueError:
+                md[k] = v
+        return md
+
+    def get_acl_metadata(self):
+        return serialize_acl_metadata(self)
+
 
     @classmethod
     def find_by_path(cls, path):
@@ -147,6 +186,23 @@ class Collection(Model):
         groups = set(user.groups) - set(l)
         return len(groups) < len(user.groups)
 
+    def md_to_list(self):
+        res = []
+        for k,v in self.metadata.iteritems():
+            try:
+                val_json = json.loads(v)
+                val = val_json.get('json', '')
+                if isinstance(val, list):
+                    for el in val:
+                        res.append((k, el))
+                else:
+                    if val:
+                        res.append((k, val))
+            except ValueError:
+                if v:
+                    res.append((k, v))
+        return res
+
     def to_dict(self,user=None):
         data = {
             "id": self.id,
@@ -154,7 +210,7 @@ class Collection(Model):
             "name": self.name,
             "path": self.path(),
             "created": self.create_ts,
-            "metadata": [(k,v) for k,v in self.metadata.iteritems()]
+            "metadata": self.md_to_list()
         }
         if user:
             data['can_read'] = self.user_can(user, "read")
