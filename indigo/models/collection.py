@@ -1,31 +1,43 @@
-from datetime import datetime
-try:
-    import json
-except ImportError:
-    import simplejson as json
+"""Collection Model
 
-from cassandra.cqlengine import (
-    columns,
-    ValidationError
-)
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
+from datetime import datetime
+from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
 from indigo.models.resource import Resource
 from indigo.util import (
     default_cdmi_id,
+    meta_cassandra_to_cdmi,
+    meta_cdmi_to_cassandra,
     merge,
+    metadata_to_list,
     split
 )
 from indigo.acl import serialize_acl_metadata
 from indigo.models.errors import (
-    ContainerAlreadyExistsException,
-    DataObjectAlreadyExistsException,
-    NoSuchContainerException,
-    UniqueException
+    CollectionConflictError,
+    ResourceConflictError,
+    NoSuchCollectionError
 )
 
 
 class Collection(Model):
+    """Collection model"""
     id = columns.Text(default=default_cdmi_id, index=True)
     container = columns.Text(primary_key=True, required=False)
     name = columns.Text(primary_key=True, required=True)
@@ -44,33 +56,37 @@ class Collection(Model):
     delete_access = columns.List(columns.Text)
 
     @classmethod
-    def create(self, **kwargs):
-        """We intercept the create call"""
-        # TODO: Handle unicode chars in the name
+    def create(cls, **kwargs):
+        """Create a new collection
+
+        We intercept the create call"""
         container = kwargs.get('container', '/').strip()
         name = kwargs.get('name').strip()
-        
+
         kwargs['name'] = name
         kwargs['container'] = container
         d = datetime.now()
         kwargs['create_ts'] = d
         kwargs['modified_ts'] = d
-        
+        if kwargs.has_key('metadata'):
+            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+
         # Check if parent collection exists
         parent = Collection.find_by_path(container)
         if parent is None:
-            raise NoSuchContainerException(container)
+            raise NoSuchCollectionError(container)
         resource = Resource.find_by_path(merge(container, name))
         if resource is not None:
-            raise DataObjectAlreadyExistsException(container)
+            raise ResourceConflictError(container)
         collection = Collection.find_by_path(merge(container, name))
-        if resource is not None:
-            raise ContainerAlreadyExistsException(container)
+        if collection is not None:
+            raise CollectionConflictError(container)
 
-        return super(Collection, self).create(**kwargs)
+        return super(Collection, cls).create(**kwargs)
 
     @classmethod
     def create_root(cls):
+        """Create the root container"""
         d = datetime.now()
         root = Collection(container='null',
                           name='Home',
@@ -80,91 +96,114 @@ class Collection(Model):
         root.save()
         return root
 
-
     @classmethod
-    def delete_all(self, path):
+    def delete_all(cls, path):
+        """Delete recursively all sub-collections and all resources contained
+        in a collection at 'path'"""
         parent_coll = Collection.find_by_path(path)
+        if not parent_coll:
+            return
         colls = list(parent_coll.get_child_collections())
         rescs = list(parent_coll.get_child_resources())
-        
         for resc in rescs:
             resc.delete()
         for coll in colls:
             Collection.delete_all(coll.path())
         parent_coll.delete()
 
-    def update(self, **kwargs):
-        kwargs['modified_ts'] = datetime.now()
-        
-        # We store the metadata value as JSON to allow more complex types
-        d = {}
-        for key, value in kwargs.get('metadata', {}).iteritems():
-            if not value:
-                continue
-            if isinstance(value, str):
-                value = unicode(value)
-            json_val = {}
-            json_val["json"] = value
-            d[key] = json.dumps(json_val)
-        kwargs['metadata'] = d
-        return super(Collection, self).update(**kwargs)
-
-    def get_child_collections(self):
-        return Collection.objects.filter(container=self.path()).all()
-
-    def get_child_collection_count(self):
-        return Collection.objects.filter(container=self.path()).count()
-
-    def get_child_resources(self):
-        return Resource.objects.filter(container=self.path()).all()
-
-    def get_child_resource_count(self):
-        return Resource.objects.filter(container=self.path()).count()
-
-    def get_parent_collection(self):
-        return Collection.find_by_path(self.container)
+    @classmethod
+    def find(cls, path):
+        """Return a collection from a path"""
+        return cls.find_by_path(path)
 
     @classmethod
-    def get_root_collection(self):
-        return self.objects.filter(is_root=True).first()
-
-    @classmethod
-    def find(self, path):
-        return self.find_by_path(path)
-    
-    def get_metadata(self):
-        md = {}
-        for k, v in self.metadata.items():
-            try:
-                val_json = json.loads(v)
-                val = val_json.get('json', '')
-                if val:
-                    md[k] = val
-            except ValueError:
-                md[k] = v
-        return md
-
-    def get_acl_metadata(self):
-        return serialize_acl_metadata(self)
-
+    def find_by_id(cls, idstring):
+        """Return a collection from a uuid"""
+        return cls.objects.filter(id=idstring).first()
 
     @classmethod
     def find_by_path(cls, path):
+        """Return a collection from a path"""
         if path == '/':
             return cls.get_root_collection()
         container, name = split(path)
         return cls.objects.filter(container=container, name=name).first()
 
     @classmethod
-    def find_by_name(self, name):
-        return self.objects.filter(name=name).first()
+    def find_by_name(cls, name):
+        """Return a collection from a name"""
+        return cls.objects.filter(name=name).first()
 
     @classmethod
-    def find_by_id(self, idstring):
-        return self.objects.filter(id=idstring).first()
+    def get_root_collection(cls):
+        """Return the root collection"""
+        return cls.objects.filter(is_root=True).first()
 
     def __unicode__(self):
         return self.path()
+
+    def get_child_collections(self):
+        """Return a list of all sub-collections"""
+        return Collection.objects.filter(container=self.path()).all()
+
+    def get_child_collection_count(self):
+        """Return the number of sub-collections"""
+        return Collection.objects.filter(container=self.path()).count()
+
+    def get_child_resources(self):
+        """Return a list of all resources"""
+        return Resource.objects.filter(container=self.path()).all()
+
+    def get_child_resource_count(self):
+        """Return the number of resources"""
+        return Resource.objects.filter(container=self.path()).count()
+
+    def get_metadata(self):
+        """Return a dictionary of metadata"""
+        return meta_cassandra_to_cdmi(self.metadata)
+
+    def get_parent_collection(self):
+        """Return the parent collection"""
+        return Collection.find_by_path(self.container)
+
+    def get_acl_metadata(self):
+        """Return a dictionary of acl based on the Collection schema"""
+        return serialize_acl_metadata(self)
+
+    def md_to_list(self):
+        """Transform metadata to a list of couples for web ui"""
+        return metadata_to_list(self.metadata)
+
+    def path(self):
+        """Return the full path of the collection"""
+        if self.is_root:
+            return u"/"
+        else:
+            return merge(self.container, self.name)
+
+    def to_dict(self, user=None):
+        """Return a dictionary which describes a collection for the web ui"""
+        data = {
+            "id": self.id,
+            "container": self.container,
+            "name": self.name,
+            "path": self.path(),
+            "created": self.create_ts,
+            "metadata": self.md_to_list()
+        }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+        return data
+
+    def update(self, **kwargs):
+        """Update a collection"""
+        kwargs['modified_ts'] = datetime.now()
+        if kwargs.has_key('metadata'):
+            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+        return super(Collection, self).update(**kwargs)
 
     def user_can(self, user, action):
         """
@@ -185,43 +224,3 @@ class Collection(Model):
         # removed, it confirms presence in l
         groups = set(user.groups) - set(l)
         return len(groups) < len(user.groups)
-
-    def md_to_list(self):
-        res = []
-        for k,v in self.metadata.iteritems():
-            try:
-                val_json = json.loads(v)
-                val = val_json.get('json', '')
-                if isinstance(val, list):
-                    for el in val:
-                        res.append((k, el))
-                else:
-                    if val:
-                        res.append((k, val))
-            except ValueError:
-                if v:
-                    res.append((k, v))
-        return res
-
-    def to_dict(self,user=None):
-        data = {
-            "id": self.id,
-            "container": self.container,
-            "name": self.name,
-            "path": self.path(),
-            "created": self.create_ts,
-            "metadata": self.md_to_list()
-        }
-        if user:
-            data['can_read'] = self.user_can(user, "read")
-            data['can_write'] = self.user_can(user, "write")
-            data['can_edit'] = self.user_can(user, "edit")
-            data['can_delete'] = self.user_can(user, "delete")
-
-        return data
-
-    def path(self):
-        if self.is_root:
-            return u"/"
-        else:
-            return merge(self.container, self.name)

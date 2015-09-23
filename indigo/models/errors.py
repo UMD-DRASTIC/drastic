@@ -1,226 +1,117 @@
+"""Indigo Exceptions
+
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 
 
-class BaseException(Exception):
+class BaseError(Exception):
     """Indigo Base Exception."""
     pass
 
 
-class NoSuchDriverException(BaseException):
+class NoReadAccessError(BaseError):
     pass
 
 
-class UniqueException(BaseException):
+class NoWriteAccessError(BaseError):
     pass
 
 
-class NoSuchCollection(BaseException):
+class NoSuchDriverError(BaseError):
+    """Indigo Base Exception."""
     pass
 
 
-class StorageException(BaseException):
-    """Base Class for storage Exceptions.
+class ModelError(BaseError):
+    """Base Class for storage Exceptions
  
     Abstract Base Class from which more specific Exceptions are derived.
     """
 
-    def __init__(self, path):
+    def __init__(self, obj_str):
+        self.obj_str = obj_str
+
+
+class ResourceConflictError(ModelError):
+    """Resource already exists Exception"""
+
+    def __str__(self):
+        return "Resource already exists at '{}'".format(self.obj_str)
+
+
+class NoSuchResourceError(ModelError):
+    """No such data object Exception"""
+
+    def __str__(self):
+        return "Resource '{}' does not exist".format(self.obj_str)
+
+
+class CollectionConflictError(ModelError):
+    """Container already exists Exception"""
+
+    def __str__(self):
+        return "Container already exists at '{}'".format(self.obj_str)
+
+
+class NoSuchCollectionError(ModelError):
+    """No such container Exception """
+
+    def __str__(self):
+        return "Container '{}' does not exist".format(self.obj_str)
+
+
+class GroupConflictError(ModelError):
+    """Group already exists Exception"""
+
+    def __str__(self):
+        return "Group '{}' already exists".format(self.obj_str)
+
+
+class NodeConflictError(ModelError):
+    """Node address already used"""
+
+    def __str__(self):
+        return "Address '{}' already in use".format(self.obj_str)
+
+
+class UserConflictError(ModelError):
+    """USername already used"""
+
+    def __str__(self):
+        return "Username '{}' already in use".format(self.obj_str)
+
+
+class UndiagnosedModelError(ModelError):
+    """Undiagnosed Exception wrapper
+ 
+    A catchall Exception raised due to a situation that has not yet been
+    diagnosed and dealt with specifically. This wraps the Exception raised
+    from the underlying storage implementation.
+    """
+ 
+    def __init__(self, path, exc):
         self.path = path
-
-
-class NoSuchObjectException(StorageException):
-    """No such object Exception.
- 
-    An Exception raised due to request to carry out an action on an object
-    that does not exist.
-    """
-
-    def __str__(self):
-        return "Object {0} does not exist".format(self.path)
-
-
-class NoSuchContainerException(NoSuchObjectException):
-    """No such container Exception.
-
-    An Exception raised due to request to carry out an action on a path
-    for which the the container does not exist.
-    """
-
-    def __str__(self):
-        return "Container {0} does not exist".format(self.path)
-
-
-class NotAContainerException(StorageException):
-    """Resource is not a container Exception.
- 
-    An Exception raised due to request to carry out a container specific
-    action on a path that is not a container.
-    """
+        # The Exception raised by the underlying storage implementation
+        self.exc = exc
  
     def __str__(self):
-        return "{0} is not a container".format(self.path)
- 
- 
-class NoSuchDataObjectException(NoSuchObjectException):
-    """No such data object Exception.
- 
-    An Exception raised due to request to carry out an action on a data object
-    which does not exist.
-    """
- 
-    def __str__(self):
-        return "Data object {0} does not exist".format(self.path)
- 
- 
-class NotADataObjectException(StorageException):
-    """Resource is not a data object Exception.
- 
-    An Exception raised due to request to carry out a data object specific
-    action on a path that is not a data object.
-    """
- 
-    def __str__(self):
-        return "{0} is not a data object".format(self.path)
- 
- 
-class ContainerAlreadyExistsException(StorageException):
-    """Container already exists Exception.
- 
-    An Exception raised due to request to create a resource on a path that
-    is already present as a container on the storage resource.
-    """
- 
-    def __str__(self):
-        return "Container already exists at {0}".format(self.path)
- 
- 
-class DataObjectAlreadyExistsException(StorageException):
-    """Resource already exists Exception.
- 
-    An Exception raised due to request to create a resource on a path that
-    is already present as a data object on the storage resource.
-    """
-# 
-#     def __str__(self):
-#         return "Data object already exists at {0}".format(self.path)
-# 
-# 
-# class UndiagnosedStorageException(StorageException):
-#     """Undiagnosed Exception wrapper.
-# 
-#     A catchall Exception raised due to a situation that has not yet been
-#     diagnosed and dealt with specifically. This wraps the Exception raised
-#     from the underlying storage implementation.
-#     """
-# 
-#     def __init__(self, path, exc):
-#         self.path = path
-#         # The Exception raised by the underlying storage implementation
-#         self.exc = exc
-# 
-#     def __str__(self):
-#         return ("Operation on {0} caused an exception:\n{1}"
-#                 "".format(self.path, self.exc)
-#                 )
+        return ("Operation on {0} caused an exception:\n{1}"
+                "".format(self.path, self.exc)
+                )
 
 
-# class ConfigException(BaseException):
-#     """Indigo configuration Exception.
-# 
-#     An Exception raised due to missing or invalid configuration
-#     value.
-#     """
-#     pass
-# 
-# 
-# class NoSectionConfigException(ConfigException):
-#     """Indigo configuration missing option exception.
-# 
-#     An Exception raised due to a missing configuration section.
-#     """
-# 
-#     def __init__(self, section, info=""):
-#         self.section = section
-#         self.info = info
-# 
-#     def __str__(self):
-#         message = ("Missing configuration section '{section}'."
-#                    "".format(**self.__dict__)
-#                    )
-#         if self.info:
-#             message += "\n" + self.info
-#         return message
-# 
-# 
-# class NoOptionConfigException(ConfigException):
-#     """Indigo configuration missing option exception.
-# 
-#     An Exception raised due to a missing configuration option.
-#     """
-# 
-#     def __init__(self, section, option, info=""):
-#         self.section = section
-#         self.option = option
-#         self.info = info
-# 
-#     def __str__(self):
-#         message = ("Missing configuration option '{option}' in section "
-#                    "'{section}'.".format(**self.__dict__)
-#                    )
-#         if self.info:
-#             message += "\n" + self.info
-#         return message
-# 
-# 
-# class InvalidOptionConfigException(ConfigException):
-#     """Indigo configuration invalid option exception.
-# 
-#     An Exception raised due to an incorrect or inappropriate configuration
-#     value.
-#     """
-# 
-#     def __init__(self, section, option, value, info=""):
-#         self.section = section
-#         self.option = option
-#         self.value = value
-#         self.info = info
-# 
-#     def __str__(self):
-#         message = ("Invalid configuration value '{value}' for option "
-#                    "'{option}' in section '{section}'."
-#                    "".format(**self.__dict__)
-#                    )
-#         if self.info:
-#             message += "\n" + self.info
-#         return message
-
-
-class NoReadAccess(BaseException):
+class UniqueError(BaseError):
+    """Uniqueness error"""
     pass
- 
- 
-class NoWriteAccess(BaseException):
-    pass
- 
-# 
-# class ResourceAlreadyExists(BaseException):
-#     pass
-# 
-# 
-# class ResourceDoesntExist(BaseException):
-#     pass
-# 
- 
-class ResourcePolicyConflict(BaseException):
-    pass
-# 
-# 
-# class RoleDoesntExist(BaseException):
-#     pass
-# 
-# 
-# class SiteAlreadyExists(BaseException):
-#     pass
-# 
-# 
-# class SiteDoesntExist(BaseException):
-#     pass

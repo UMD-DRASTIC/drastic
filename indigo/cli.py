@@ -1,13 +1,31 @@
+"""Command Line Interface
+
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import argparse
 import sys
 
 from indigo import get_config
-from indigo.models.errors import UniqueException
+from indigo.models.errors import GroupConflictError
 from indigo.models import initialise, sync, destroy
+from indigo.ingest import do_ingest
 
-from ingest import do_ingest
 
 def parse_arguments():
+    """Parse command-line arguments"""
     parser = argparse.ArgumentParser(description='Interact with the indigo system')
     parser.add_argument('command', type=str, metavar="N", nargs="+",
                        help='The command to run')
@@ -28,20 +46,27 @@ def parse_arguments():
 
 
 def create(cfg):
+    """Create the keyspace and the tables"""
     initialise(cfg.get("KEYSPACE", "indigo"))
     sync()
 
+
 def zap(cfg):
+    """Destroy the keyspace and the tables"""
     keyspace = cfg.get("KEYSPACE", "indigo")
     initialise(keyspace)
     destroy(keyspace)
 
+
 def user_list(cfg):
+    """Print user list"""
     from indigo.models import User
     for user in User.objects.all():
         print "Username: {}, ID: {}".format(user.username, user.id)
 
+
 def user_add(cfg, username=None):
+    """Add a new user"""
     from indigo.models import User
     from getpass import getpass
 
@@ -59,11 +84,16 @@ def user_add(cfg, username=None):
 
     email = raw_input("Please enter the user's email address: ")
     password = getpass("Please enter the user's password: ")
-    User.create(username=username, password=password, email=email,administrator=(admin.lower()=='y'))
+    User.create(username=username,
+                password=password,
+                email=email,
+                administrator=(admin.lower() == 'y'))
 
     print "Success: User with username {} has been created".format(username)
 
+
 def group_add(cfg, args):
+    """Add a group"""
     from indigo.models import Group, User
     if not args or not len(args) == 2:
         print "Error: Group Name and Username are required parameters"
@@ -73,13 +103,15 @@ def group_add(cfg, args):
     user = User.find(username)
     try:
         group = Group.create(name=name, owner=user.id)
-    except UniqueException:
+    except GroupConflictError:
         print "A group with that name already exists"
         return
 
     print "Created group '{}' with id: {}".format(name, group.id)
 
+
 def group_delete(cfg, args):
+    """Delete a group"""
     from indigo.models import Group, User
     if not args or not len(args) == 1:
         print "Error: Group Name is a required parameters"
@@ -93,6 +125,7 @@ def group_delete(cfg, args):
 
 
 def group_add_user(cfg, args):
+    """Add a user to a group"""
     from indigo.models import Group, User
     if not args or not len(args) == 2:
         print "Error: Group Name and Username are required parameters"
@@ -101,22 +134,26 @@ def group_add_user(cfg, args):
     group_name, username = args
     user = User.find(username)
     group = Group.find(group_name)
-    if not group.id in user.groups:
+    if group.id not in user.groups:
         user.groups.append(group.id)
         user.update(groups=user.groups)
 
     print "Added {} to {}".format(user.username, group.name)
 
+
 def group_list(cfg):
+    """Print groups"""
     from indigo.models.group import Group
     for group in Group.objects.all():
         print "Name: {}, ID: {}".format(group.name, group.id)
         for user in group.get_users():
             print ".ID: {}\tUsername: {}\tAdministrator:{}\tOwner: {}".format(
                 user.id, user.username, ("N", "Y")[user.administrator],
-                ("N", "Y")[user.id==group.owner])
+                ("N", "Y")[user.id == group.owner])
+
 
 def main():
+    """Main"""
     args = parse_arguments()
     cfg = get_config(args.config)
 

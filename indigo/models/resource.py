@@ -1,22 +1,40 @@
-from datetime import datetime
-import os.path
-try:
-    import json
-except ImportError:
-    import simplejson as json
+"""Resource Model
 
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
+from datetime import datetime
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
-from indigo.models.errors import UniqueException, NoSuchCollection
-import indigo.models.collection
+from indigo.models.errors import (
+    NoSuchCollectionError,
+    ResourceConflictError
+)
 from indigo.util import (
     default_cdmi_id,
+    meta_cassandra_to_cdmi,
+    meta_cdmi_to_cassandra,
     merge,
+    metadata_to_list,
     split
 )
 
+
 class Resource(Model):
+    """Resource Model"""
     id = columns.Text(default=default_cdmi_id, index=True)
     container = columns.Text(primary_key=True, required=True)
     name = columns.Text(primary_key=True, required=True)
@@ -34,133 +52,79 @@ class Resource(Model):
     # the specified permission. If the lists have at least one entry
     # then access is restricted, if there are no entries in a particular
     # list, then access is granted to all (authenticated users)
-    read_access   = columns.List(columns.Text)
-    edit_access   = columns.List(columns.Text)
-    write_access  = columns.List(columns.Text)
+    read_access = columns.List(columns.Text)
+    edit_access = columns.List(columns.Text)
+    write_access = columns.List(columns.Text)
     delete_access = columns.List(columns.Text)
 
 
     @classmethod
-    def create(self, **kwargs):
-        """
+    def create(cls, **kwargs):
+        """Create a new resource
+
         When we create a resource, the minimum we require is a name
         and a container. There is little chance of getting trustworthy
         versions of any of the other data at creation stage.
         """
 
-        # TODO: Handle unicode chars in the name
         kwargs['name'] = kwargs['name'].strip()
         kwargs['create_ts'] = datetime.now()
         kwargs['modified_ts'] = kwargs['create_ts']
+        if kwargs.has_key('metadata'):
+            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
         # Check the container exists
-        #collection = indigo.models.collection.Collection.objects.filter(container=kwargs['container']).first()
-        collection = indigo.models.collection.Collection.find_by_path(kwargs['container'])
+        from indigo.models.collection import Collection
+        collection = Collection.find_by_path(kwargs['container'])
         if not collection:
-            raise NoSuchCollection("That collection does not exist")
+            raise NoSuchCollectionError(kwargs['container'])
 
         # Make sure parent/name are not in use.
-        existing = self.objects.filter(container=kwargs['container']).all()
+        existing = cls.objects.filter(container=kwargs['container']).all()
         if kwargs['name'] in [e['name'] for e in existing]:
-            raise UniqueException("That name is in use in the current collection")
+            raise ResourceConflictError(merge(kwargs['container'],
+                                              kwargs['name']))
 
-        return super(Resource, self).create(**kwargs)
-
-    def get_container(self):
-        """
-        Returns the Collection object for the parent of the resource.
-        """
-        # Check the container exists
-        container = indigo.models.collection.Collection.find_by_path(self.container)
-        if not container:
-            raise NoSuchCollection("That collection does not exist")
-        else:
-            return container
-
-    def user_can(self, user, action):
-        """
-        User can perform the action if any of the user's group IDs
-        appear in this list for 'action'_access in this object.
-        """
-        if user.administrator:
-            return True
-
-        l = getattr(self, '{}_access'.format(action))
-        if len(l) and not len(user.groups):
-            # Group access required, user not in any groups
-            return False
-        if not len(l):
-            # Group access not required
-            return True
-
-        # if groups has less than user.groups then it has had a group
-        # removed, it confirms presence in l
-        groups = set(user.groups) - set(l)
-        return len(groups) < len(user.groups)
-
-
-    def update(self, **kwargs):
-        kwargs['modified_ts'] = datetime.now()
-        
-        # We store the metadata value as JSON to allow more complex types
-        d = {}
-        for key, value in kwargs.get('metadata', {}).iteritems():
-            if not value:
-                continue
-            if isinstance(value, str):
-                value = unicode(value)
-            json_val = {}
-            json_val["json"] = value
-            d[key] = json.dumps(json_val)
-        kwargs['metadata'] = d
-        return super(Resource, self).update(**kwargs)
+        return super(Resource, cls).create(**kwargs)
 
     @classmethod
-    def find_by_id(self, idstring):
-        return self.objects.filter(id=idstring).first()
+    def find_by_id(cls, idstring):
+        """Find resource by id"""
+        return cls.objects.filter(id=idstring).first()
 
     @classmethod
-    def find_by_path(self, path):
+    def find_by_path(cls, path):
+        """Find resource by path"""
         coll_name, resc_name = split(path)
-        return self.objects.filter(container=coll_name, name=resc_name).first()
-
-    def get_metadata(self):
-        md = {}
-        for k, v in self.metadata.items():
-            try:
-                val_json = json.loads(v)
-                val = val_json.get('json', '')
-                if val:
-                    md[k] = val
-            except ValueError:
-                md[k] = v
-        return md
-
+        return cls.objects.filter(container=coll_name, name=resc_name).first()
 
     def __unicode__(self):
         return self.path()
 
-    def path(self):
-        return merge(self.container, self.name)
+    def get_container(self):
+        """Returns the parent collection of the resource"""
+        # Check the container exists
+        from indigo.models.collection import Collection
+        container = Collection.find_by_path(self.container)
+        if not container:
+            raise NoSuchCollectionError(self.container)
+        else:
+            return container
+
+    def get_metadata(self):
+        """Return a dictionary of metadata"""
+        return meta_cassandra_to_cdmi(self.metadata)
 
     def md_to_list(self):
-        res = []
-        for k,v in self.metadata.iteritems():
-            try:
-                val_json = json.loads(v)
-                val = val_json.get('json', '')
-                if isinstance(val, list):
-                    for el in val:
-                        res.append((k, el))
-                else:
-                    if val:
-                        res.append((k, val))
-            except ValueError:
-                if v:
-                    res.append((k, v))
-        return res
+        """Transform metadata to a list of couples for web ui"""
+        return metadata_to_list(self.metadata)
+
+    def path(self):
+        """Return the full path of the resource"""
+        return merge(self.container, self.name)
 
     def to_dict(self, user=None):
-        data =   {
+        """Return a dictionary which describes a resource for the web ui"""
+        data = {
             "id": self.id,
             "name": self.name,
             "container": self.container,
@@ -182,3 +146,30 @@ class Resource(Model):
             data['can_delete'] = self.user_can(user, "delete")
         return data
 
+    def update(self, **kwargs):
+        """Update a resource"""
+        kwargs['modified_ts'] = datetime.now()
+        if kwargs.has_key('metadata'):
+            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+        return super(Resource, self).update(**kwargs)
+
+    def user_can(self, user, action):
+        """
+        User can perform the action if any of the user's group IDs
+        appear in this list for 'action'_access in this object.
+        """
+        if user.administrator:
+            return True
+
+        l = getattr(self, '{}_access'.format(action))
+        if len(l) and not len(user.groups):
+            # Group access required, user not in any groups
+            return False
+        if not len(l):
+            # Group access not required
+            return True
+
+        # if groups has less than user.groups then it has had a group
+        # removed, it confirms presence in l
+        groups = set(user.groups) - set(l)
+        return len(groups) < len(user.groups)
