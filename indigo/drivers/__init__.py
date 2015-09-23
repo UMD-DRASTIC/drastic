@@ -19,7 +19,7 @@ limitations under the License.
 from indigo.drivers.filesystem import FileSystemDriver
 from indigo.drivers.cassandra import CassandraDriver
 from indigo.drivers.test import TestDriver
-from indigo.models.errors import NoSuchDriverException
+from indigo.models.errors import NoSuchDriverError
 
 DRIVERS = {
     "cassandra": CassandraDriver,
@@ -38,7 +38,7 @@ def get_driver(url):
     """
     scheme, path = parse_url(url)
     if scheme not in DRIVERS:
-        raise NoSuchDriverException(u"{} is an unknown protocol".format(scheme))
+        raise NoSuchDriverError(u"{} is an unknown protocol".format(scheme))
     return DRIVERS[scheme](path)
 
 

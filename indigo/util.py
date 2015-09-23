@@ -22,6 +22,7 @@ from crcmod.predefined import mkPredefinedCrcFun
 import struct
 import base64
 import os.path
+import json
 
 IDENT_PEN = 42223
 # CDMI ObjectId Length: 8 bits header + 16bits uuid
