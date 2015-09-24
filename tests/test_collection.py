@@ -3,7 +3,6 @@ import unittest
 from indigo.models.collection import Collection
 from indigo.models.user import User
 from indigo.models.group import Group
-from indigo.models.errors import UniqueException
 
 from nose.tools import raises
 

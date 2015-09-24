@@ -26,7 +26,7 @@ from indigo.models.user import User
 from indigo.models.group import Group
 from indigo.models.collection import Collection
 from indigo.models.resource import Resource
-from indigo.models.errors import UniqueException
+from indigo.models.errors import ResourceConflictError
 
 #Queue/Thread
 from Queue import Queue
@@ -224,7 +224,7 @@ def Process_Create_Entry(rdict, context, do_load ):
     # MOSTLY the resource will not exist... so do it this way.
     try:
         resource = Resource.create(**rdict)
-    except UniqueException as excpt:
+    except ResourceConflictError as excpt:
         # allow_filtering is used because either we filter close to the data, or fetch eveything and filter here
         # and some of the directories in the wild are huge ( many tens of thousands of entries ).
         existing = Resource.objects.allow_filtering().filter(container=context['collection'],name=rdict['name']).all()
