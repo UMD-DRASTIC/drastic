@@ -268,7 +268,7 @@ def merge(coll_name, resc_name):
 
 
 def split(path):
-    """Parse a full path and return the collection and the resourec name"""
+    """Parse a full path and return the collection and the resource name"""
     coll_name = os.path.dirname(path)
     resc_name = os.path.basename(path)
     return (coll_name, resc_name)
