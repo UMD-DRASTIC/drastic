@@ -28,20 +28,19 @@ def parse_arguments():
     """Parse command-line arguments"""
     parser = argparse.ArgumentParser(description='Interact with the indigo system')
     parser.add_argument('command', type=str, metavar="N", nargs="+",
-                       help='The command to run')
+                        help='The command to run')
     parser.add_argument('--config', '-c', dest='config', action='store',
-                       help='Specify the location of the configuration file')
+                        help='Specify the location of the configuration file')
     parser.add_argument('--group', '-g', dest='group', action='store',
-                       help='Specify the group name for ingestion of data')
+                        help='Specify the group name for ingestion of data')
     parser.add_argument('--user', '-u', dest='user', action='store',
-                       help='Specify the username for ingestion of data')
+                        help='Specify the username for ingestion of data')
     parser.add_argument('--folder', dest='folder', action='store',
-                       help='Specify the root folder to ingest from on disk')
+                        help='Specify the root folder to ingest from on disk')
     parser.add_argument('--noimport', dest='no_import', action='store_true',
-                       help='Set if we do not want to import the files into Cassandra')
-
+                        help='Set if we do not want to import the files into Cassandra')
     parser.add_argument('--localip', dest='local_ip', action='store',
-                       help='Specify the IP address for this machine (subnets/private etc)')
+                        help='Specify the IP address for this machine (subnets/private etc)')
     return parser.parse_args()
 
 
@@ -70,17 +69,17 @@ def user_add(cfg, username=None):
     from indigo.models import User
     from getpass import getpass
 
-    if not username:
+    if username is None:
         username = raw_input("Please enter the user's username: ")
     else:
         username = username[0]
-
-    admin = raw_input("Is this an administrator? [y/N] ")
 
     user = User.objects.filter(username=username).first()
     if user:
         print "ERROR: Username {} is already in use".format(username)
         sys.exit(1)
+
+    admin = raw_input("Is this an administrator? [y/N] ")
 
     email = raw_input("Please enter the user's email address: ")
     password = getpass("Please enter the user's password: ")
@@ -112,12 +111,11 @@ def group_add(cfg, args):
 
 def group_delete(cfg, args):
     """Delete a group"""
-    from indigo.models import Group, User
+    from indigo.models import Group
     if not args or not len(args) == 1:
         print "Error: Group Name is a required parameters"
         sys.exit(0)
 
-    name = args[0]
     group = Group.find(args[0])
     group.delete()
 
@@ -150,6 +148,7 @@ def group_list(cfg):
             print ".ID: {}\tUsername: {}\tAdministrator:{}\tOwner: {}".format(
                 user.id, user.username, ("N", "Y")[user.administrator],
                 ("N", "Y")[user.id == group.owner])
+
 
 
 def main():

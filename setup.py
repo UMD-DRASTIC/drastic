@@ -32,10 +32,11 @@ setup(
     maintainer_email='@archiveanalytics.com',
     license="Apache License, Version 2.0",
     url='https://bitbucket.org/archivea/libindigo',
-    install_requires = [
+    install_requires=[
         "cassandra-driver==2.5.1",
         "passlib==1.6.2",
-        "nose==1.3.6"
+        "nose==1.3.6",
+        "blist==1.3.6"
     ],
     entry_points={
         'console_scripts': [
