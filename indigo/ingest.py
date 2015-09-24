@@ -142,14 +142,10 @@ class Ingester(object):
             root_collection = Collection.create_root()
         self.collection_cache["/"] = root_collection
 
-        paths = []
         for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks = True ):
             if '/.' in path: continue # Ignore .paths
-            paths.append(path.replace(self.folder, ''))
-        
-        paths.sort(key=len)
+            path = path.replace(self.folder, '')
 
-        for path in paths:
             parent_path, name = split(path)
             print "Processing {} with name '{}'".format(path, name)
 
@@ -167,9 +163,8 @@ class Ingester(object):
                 current_collection = root_collection
 
             # Now we can add the resources from self.folder + path
-            for entry in os.listdir(self.folder + path):
+            for entry in files:
                 fullpath = self.folder + path + '/' + entry
-
                 if entry.startswith("."): continue
                 if entry.endswith(SKIP): continue
                 if not os.path.isfile(fullpath): continue
