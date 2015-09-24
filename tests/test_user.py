@@ -2,7 +2,7 @@ import unittest
 
 from indigo.models.user import User
 from indigo.models.group import Group
-from indigo.models.errors import UniqueException
+from indigo.models.errors import UserConflictError
 
 from nose.tools import raises
 
@@ -17,7 +17,7 @@ class UserTest(unittest.TestCase):
         assert user.administrator == False
         assert user.active == True
 
-    @raises(UniqueException)
+    @raises(UserConflictError)
     def test_create_fail(self):
         User.create(username="test", password="password", email="test@localhost.local", quick=True)
         User.create(username="test", password="password", email="test@localhost.local", quick=True)

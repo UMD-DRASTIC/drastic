@@ -1,3 +1,20 @@
+"""Ingest script
+
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import os
 import sys
 import time
@@ -9,7 +26,8 @@ from indigo.models.user import User
 from indigo.models.group import Group
 from indigo.models.collection import Collection
 from indigo.models.resource import Resource
-from indigo.models.errors import UniqueException
+from indigo.models.errors import ResourceConflictError
+from indigo.util import split
 
 #Queue/Thread
 from Queue import Queue
@@ -53,13 +71,15 @@ class Ingester(object):
         self.folder = folder
         self.collection_cache = {}
         self.skip_import = skip_import
-        self.local_ip = local_ip
+        if local_ip:
+            self.local_ip = local_ip
+        else:
+            self.local_ip = '127.0.0.1'
 
-    def create_collection(self, name, path, parent):
+    def create_collection(self, parent_path, name, path):
         d = {}
-        d['path'] = path
+        d['container'] = parent_path
         d['name'] = name
-        d['parent'] = parent
         d['write_access']  = self.groups
         d['delete_access'] = self.groups
         d['edit_access']   = self.groups
@@ -82,8 +102,8 @@ class Ingester(object):
 
     def resource_for_file(self, path):
         d = {}
-        d['name'] = path.split('/')[-1]
-        d['file_name'] = path.split('/')[-1]
+        _, d['name'] = split(path)
+        d['file_name'] = d['name']
 
         t, _ = guess_type(path)
         _, ext = os.path.splitext(path)
@@ -109,61 +129,57 @@ class Ingester(object):
         self.queue = initializeThreading()
         self.doWork()
         terminateThreading(self.queue)
+
     def Create_Entry(self,rdict, context, do_load):
         self.queue.put( (rdict.copy(),context.copy(),do_load) )
         return
+
     def doWork(self):
         TIMER = timer_counter()
 
         root_collection = Collection.get_root_collection()
         if not root_collection:
-            root_collection = Collection.create(name="Home", path="/")
+            root_collection = Collection.create_root()
         self.collection_cache["/"] = root_collection
 
         paths = []
         for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks = True ):
             if '/.' in path: continue # Ignore .paths
-            paths.append(path)
-
-        def name_and_parent_path(p):
-            parts = p.split('/')
-            return parts[-2], '/'.join(parts[:-2]) + "/"
-
-        paths = [p[len(self.folder):] + "/" for p in paths]
+            paths.append(path.replace(self.folder, ''))
+        
         paths.sort(key=len)
 
         for path in paths:
-            name, parent_path = name_and_parent_path(path)
-
+            parent_path, name = split(path)
             print "Processing {} with name '{}'".format(path, name)
-            #print "  Parent path is {}".format(parent_path)
 
             if name:
                 TIMER.enter('get-collection')
                 parent = self.get_collection(parent_path)
-                #print "  Parent collection is {}".format(parent)
 
                 current_collection = self.get_collection(path)
                 if not current_collection:
-                    current_collection = self.create_collection(name, path, parent.id)
+                    current_collection = self.create_collection(parent.path(),
+                                                                name,
+                                                                path)
                 TIMER.exit('get-collection')
             else:
                 current_collection = root_collection
 
             # Now we can add the resources from self.folder + path
             for entry in os.listdir(self.folder + path):
-                fullpath = self.folder + path + entry
+                fullpath = self.folder + path + '/' + entry
 
                 if entry.startswith("."): continue
                 if entry.endswith(SKIP): continue
                 if not os.path.isfile(fullpath): continue
 
                 rdict = self.resource_for_file(fullpath)
-                rdict["container"] = current_collection.id
+                rdict["container"] = current_collection.path()
                 TIMER.enter('push')
                 self.Create_Entry( rdict,
                        dict(fullpath=fullpath,
-                            collection=current_collection.id ,
+                            collection=current_collection.path() ,
                             local_ip=self.local_ip,
                             path = path,
                             entry = entry
@@ -193,9 +209,11 @@ def terminateThreading(queue):
 
 
 class ThreadClass(Thread) :
+
     def __init__(self,q) :
         Thread.__init__(self)
         self.queue = q
+
     def run(self) :
         while True :
             args = self.queue.get()
@@ -207,7 +225,8 @@ def Process_Create_Entry(rdict, context, do_load ):
     # MOSTLY the resource will not exist... so do it this way.
     try:
         resource = Resource.create(**rdict)
-    except UniqueException as excpt:
+    except ResourceConflictError as excpt:
+        print context
         # allow_filtering is used because either we filter close to the data, or fetch eveything and filter here
         # and some of the directories in the wild are huge ( many tens of thousands of entries ).
         existing = Resource.objects.allow_filtering().filter(container=context['collection'],name=rdict['name']).all()
@@ -226,7 +245,9 @@ def Process_Create_Entry(rdict, context, do_load ):
             # Specify a URL for this resource to point to the agent on this
             # machine.  It's important that the agent is configured with the
             # same root folder as the one where we import.
-            url = "file://{}{}".format(context['local_ip'], context['path'] + context['entry'])
+            url = "file://{}{}/{}".format(context['local_ip'],
+                                          context['path'],
+                                          context['entry'])
             print 'adding '+url
             resource.update(url=url)
 

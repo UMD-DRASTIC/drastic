@@ -1,3 +1,20 @@
+"""ACL constants and functions
+
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 from collections import defaultdict, OrderedDict
 
 from indigo.models.resource import Resource
@@ -78,7 +95,9 @@ CDMI_ACE_DB_MAPPING_COLL = {
     "write": 0x56,  # CDMI_ACE_ADD_OBJECT | CDMI_ACE_ADD_SUBCONTAINER |
                     # CDMI_ACE_WRITE_METADATA | CDMI_ACE_DELETE_SUBCONTAINER,
     "edit": 0x56,
-    "delete": CDMI_ACE_DELETE | CDMI_ACE_DELETE_OBJECT | CDMI_ACE_DELETE_SUBCONTAINER
+    "delete": (CDMI_ACE_DELETE |
+               CDMI_ACE_DELETE_OBJECT |
+               CDMI_ACE_DELETE_SUBCONTAINER)
 }
 
 
@@ -128,7 +147,9 @@ def acemask_num_to_str(num_value, is_object):
             num_value = num_value ^ ACEMASK_TABLE[idx][0]
     return ', '.join(res)
 
+
 def get_acemask(access_levels, is_object):
+    """Return the ACE Mask associated to a resource/collection"""
     if is_object:
         map_dict = CDMI_ACE_DB_MAPPING_DATA
     else:
@@ -137,6 +158,7 @@ def get_acemask(access_levels, is_object):
     for lvl in access_levels:
         acemask |= map_dict[lvl]
     return acemask
+
 
 def serialize_acl_metadata(obj):
     """obj = Collection or Resource"""
@@ -149,25 +171,25 @@ def serialize_acl_metadata(obj):
             acls[user].append("read")
     else:
         acls["AUTHENTICATED@"].append("read")
-    
+
     if len(obj.edit_access) > 0:
         for user in obj.edit_access:
             acls[user].append("edit")
     else:
         acls["AUTHENTICATED@"].append("edit")
-    
+
     if len(obj.write_access) > 0:
         for user in obj.write_access:
             acls[user].append("write")
     else:
         acls["AUTHENTICATED@"].append("write")
-    
+
     if len(obj.delete_access) > 0:
         for user in obj.delete_access:
             acls[user].append("delete")
     else:
         acls["AUTHENTICATED@"].append("delete")
-    
+
     mapped_md = []
     # Create a list of ACE from the dictionary we created
     for name, access_levels in acls.items():
@@ -179,8 +201,5 @@ def serialize_acl_metadata(obj):
         acemask = get_acemask(access_levels, is_object)
         acl_md["acemask"] = acemask_num_to_str(acemask, is_object)
         mapped_md.append(acl_md)
-    
-    
-    return { "cdmi_acl": mapped_md }
 
-
+    return {"cdmi_acl": mapped_md}

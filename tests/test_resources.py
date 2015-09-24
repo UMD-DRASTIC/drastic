@@ -4,7 +4,10 @@ from indigo.models.collection import Collection
 from indigo.models.user import User
 from indigo.models.group import Group
 from indigo.models.resource import Resource
-from indigo.models.errors import UniqueException, NoSuchCollection
+from indigo.models.errors import (
+    ResourceConflictError,
+    NoSuchCollection
+)
 
 from nose.tools import raises
 
@@ -20,12 +23,12 @@ class ResourceTest(unittest.TestCase):
         assert resource.container == coll.id
 
 
-    @raises(NoSuchCollection)
+    @raises(ResourceConflictError)
     def test_create_fail(self):
         resource = Resource.create(name='invalid_resource', container="Wombles!")
 
 
-    @raises(UniqueException)
+    @raises(ResourceConflictError)
     def test_create_dupe(self):
         coll = Collection.get_root_collection()
         resource = Resource.create(name='test_dupe', container=coll.id)
