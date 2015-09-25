@@ -24,6 +24,7 @@ from indigo.models.errors import (
     ResourceConflictError
 )
 from indigo.util import (
+    decode_meta,
     default_cdmi_id,
     meta_cassandra_to_cdmi,
     meta_cdmi_to_cassandra,
@@ -113,6 +114,10 @@ class Resource(Model):
     def get_metadata(self):
         """Return a dictionary of metadata"""
         return meta_cassandra_to_cdmi(self.metadata)
+
+    def get_metadata_key(self, key):
+        """Return the value of a metadata"""
+        return decode_meta(self.metadata.get(key, ""))
 
     def md_to_list(self):
         """Transform metadata to a list of couples for web ui"""

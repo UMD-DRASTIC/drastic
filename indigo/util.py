@@ -219,6 +219,17 @@ def meta_cassandra_to_cdmi(metadata):
     return md
 
 
+def decode_meta(value):
+    """Decode a specific metadata value"""
+    try:
+        # Values are stored as json strings {'json': val}
+        val_json = json.loads(value)
+        val = val_json.get('json', '')
+    except ValueError:
+        val = value
+    return val
+
+
 def meta_cdmi_to_cassandra(metadata):
     """Transform a metadata dictionary from CDMI request to a metadata
     dictionary that can be stored in a Cassandra Model"""
