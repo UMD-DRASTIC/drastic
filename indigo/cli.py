@@ -69,7 +69,7 @@ def user_add(cfg, username=None):
     from indigo.models import User
     from getpass import getpass
 
-    if username is None:
+    if not username:
         username = raw_input("Please enter the user's username: ")
     else:
         username = username[0]
