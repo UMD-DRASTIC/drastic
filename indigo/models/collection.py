@@ -21,6 +21,7 @@ from cassandra.cqlengine.models import Model
 
 from indigo.models.resource import Resource
 from indigo.util import (
+    decode_meta,
     default_cdmi_id,
     meta_cassandra_to_cdmi,
     meta_cdmi_to_cassandra,
@@ -161,6 +162,10 @@ class Collection(Model):
     def get_metadata(self):
         """Return a dictionary of metadata"""
         return meta_cassandra_to_cdmi(self.metadata)
+
+    def get_metadata_key(self, key):
+        """Return the value of a metadata"""
+        return decode_meta(self.metadata.get(key, ""))
 
     def get_parent_collection(self):
         """Return the parent collection"""
