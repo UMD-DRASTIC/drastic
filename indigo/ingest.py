@@ -174,7 +174,7 @@ class Ingester(object):
                 TIMER.enter('push')
                 self.Create_Entry( rdict,
                        dict(fullpath=fullpath,
-                            collection=current_collection.path() ,
+                            container=current_collection.path() ,
                             local_ip=self.local_ip,
                             path = path,
                             entry = entry
@@ -216,37 +216,42 @@ class ThreadClass(Thread) :
             self.queue.task_done()
 
 
-def Process_Create_Entry(rdict, context, do_load ):
+def Process_Create_Entry(rdict, context, do_load):
     # MOSTLY the resource will not exist... so do it this way.
     try:
         resource = Resource.create(**rdict)
     except ResourceConflictError as excpt:
-        print context
         # allow_filtering is used because either we filter close to the data, or fetch eveything and filter here
         # and some of the directories in the wild are huge ( many tens of thousands of entries ).
-        existing = Resource.objects.allow_filtering().filter(container=context['collection'],name=rdict['name']).all()
+        existing = Resource.objects.allow_filtering().filter(container=context['container'],name=rdict['name']).all()
+        resource = None
         for e  in existing :
             if e.name == rdict['name']:
                 resource = e
                 break
+        if resource is None:
+            # ResourceConflict raised but resource not found
+            print "ERROR - Process_Create_Entry - {}/{} not created but not found".format(context['container'], rdict['name'])
 
-    if not resource.url:
+    # If resource.url for file changed we modified the field
 
-        # Upload the file content as blob and blobparts!
-        # TODO: Allow this file to stay where it is and reference it
-        # with IP and path.
+    # Upload the file content as blob and blobparts!
+    # TODO: Allow this file to stay where it is and reference it
+    # with IP and path.
 
-        if not do_load :
-            # Specify a URL for this resource to point to the agent on this
-            # machine.  It's important that the agent is configured with the
-            # same root folder as the one where we import.
-            url = "file://{}{}/{}".format(context['local_ip'],
+    if not do_load :
+        # Specify a URL for this resource to point to the agent on this
+        # machine.  It's important that the agent is configured with the
+        # same root folder as the one where we import.
+        new_url = "file://{}{}/{}".format(context['local_ip'],
                                           context['path'],
                                           context['entry'])
+        if new_url != resource.url:
             print 'adding '+url
             resource.update(url=url)
 
-        else:
+    else:
+        if not resource.url:
             # Push the file into Cassandra
             with open(context['fullpath'], 'r') as f:
                 blob = Blob.create_from_file(f, rdict['size'])
