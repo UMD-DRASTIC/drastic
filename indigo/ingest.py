@@ -247,8 +247,8 @@ def Process_Create_Entry(rdict, context, do_load):
                                           context['path'],
                                           context['entry'])
         if new_url != resource.url:
-            print 'adding '+url
-            resource.update(url=url)
+            print 'adding {}'.format(new_url)
+            resource.update(url=new_url)
 
     else:
         if not resource.url:
