@@ -1,4 +1,5 @@
-"""
+"""SearchIndex Model
+
 As Cassandra doesn't provide %LIKE% style queries we are constrained to
 only having direct matches and manually checking across each specific
 field.  This isn't ideal.
@@ -7,38 +8,44 @@ Until such a time as we have a better solution to searching, this model
 provides a simple index (and very, very simple retrieval algorithm) for
 matching words with resources and collections.  It does *not* search the
 data itself.
-"""
 
-import uuid
-from datetime import datetime
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 
-from indigo.models.errors import UniqueException
-from indigo.util import default_id
+from indigo.util import default_uuid
 
 
 class SearchIndex(Model):
-    id        = columns.Text(primary_key=True, default=default_id)
-    term        = columns.Text(required=True, index=True)
+    """SearchIndex Model"""
+    id = columns.Text(primary_key=True, default=default_uuid)
+    term = columns.Text(required=True, index=True)
     object_type = columns.Text(required=True)
-    object_id   = columns.Text(required=True, index=True)
-
-    @classmethod
-    def is_stop_word(cls, term):
-        return term in ["a", "an", "and",
-                        "the", "of", "is",
-                        "in", "it", "or",
-                        "to"]
+    object_id = columns.Text(required=True, index=True)
 
     @classmethod
     def find(cls, termstrings, user):
+        """Search for terms in the archive"""
         # termstrings should have been lower cased and cleaned
         from indigo.models.collection import Collection
         from indigo.models.resource import Resource
 
         def get_object(obj, user):
+            """Return the object corresponding to the SearchIndex object"""
             if obj.object_type == 'Collection':
                 result_obj = Collection.find_by_id(obj.object_id)
                 if not result_obj.user_can(user, "read"):
@@ -59,7 +66,7 @@ class SearchIndex(Model):
 
             return None
 
-        terms = [t for t in termstrings if not cls.is_stop_word(t)]
+        #terms = [t for t in termstrings if not cls.is_stop_word(t)]
 
         result_objects = []
         for t in termstrings:
@@ -70,7 +77,8 @@ class SearchIndex(Model):
         results = []
         for result in result_objects:
             results.append(get_object(result, user))
-        results = filter(lambda x: x, results)
+        #results = filter(lambda x: x, results)
+        results = [x for x in results if x]
 
         # Do some sane ordering here to group together by ID and
         # order by frequency. Add the hit_count to the object dictionary
@@ -86,19 +94,32 @@ class SearchIndex(Model):
             match['hit_count'] = len(matches)
             result_list.append(match)
 
-        return sorted(result_list, key=lambda res: res.get('hit_count', 0), reverse=True)
+        return sorted(result_list,
+                      key=lambda res: res.get('hit_count', 0),
+                      reverse=True)
+
+    @classmethod
+    def is_stop_word(cls, term):
+        """Check if a term is a stop word"""
+        return term in ["a", "an", "and",
+                        "the", "of", "is",
+                        "in", "it", "or",
+                        "to"]
 
     @classmethod
     def reset(cls, id):
+        """Delete objects from the SearchIndex"""
         # Have to delete one at a time without a partition index.
         for obj in cls.objects.filter(object_id=id).all():
             obj.delete()
 
     @classmethod
     def index(cls, object, fields=['name']):
+        """Index"""
         result_count = 0
 
         def clean(t):
+            """Clean a term"""
             return t.lower().replace('.', ' ').replace('_', ' ').split(' ')
 
         terms = []
@@ -118,12 +139,12 @@ class SearchIndex(Model):
             if len(term) < 2:
                 continue
 
-            SearchIndex.create(term=term, object_type=object_type, object_id=object.id)
+            SearchIndex.create(term=term,
+                               object_type=object_type,
+                               object_id=object.id)
             result_count += 1
 
         return result_count
 
-
     def __unicode__(self):
-        return unicode("".format(self.term, self.object_type ))
-
+        return unicode("".format(self.term, self.object_type))

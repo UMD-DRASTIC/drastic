@@ -5,6 +5,10 @@ __pycache__/
 
 # C extensions
 *.so
+# Eclipse project
+.project
+.pydevproject
+.settings
 
 # Distribution / packaging
 .Python
@@ -56,3 +60,5 @@ docs/_build/
 
 # PyBuilder
 target/
+
+.idea/

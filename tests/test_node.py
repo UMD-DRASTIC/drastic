@@ -1,7 +1,7 @@
 import unittest
 
 from indigo.models import Node
-from indigo.models.errors import UniqueException
+from indigo.models.errors import NodeConflictError
 
 from nose.tools import raises
 
@@ -15,7 +15,7 @@ class NodeTest(unittest.TestCase):
         assert node.address == '127.0.0.1'
         assert node.status == 'UP'
 
-    @raises(UniqueException)
+    @raises(NodeConflictError)
     def test_create_fail(self):
         Node.create(name="test_fail", address="127.0.0.1")
         Node.create(name="test_fail", address="127.0.0.1")

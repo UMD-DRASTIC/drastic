@@ -1,70 +1,207 @@
-from datetime import datetime
+"""Resource Model
 
+Copyright 2015 Archive Analytics Solutions
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
+from datetime import datetime
+import json
+import logging
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
+from paho.mqtt import publish
 
-from indigo.models.errors import UniqueException, NoSuchCollection
-import indigo.models.collection
-from indigo.util import default_id
+from indigo.models.errors import (
+    NoSuchCollectionError,
+    ResourceConflictError
+)
+from indigo.acl import serialize_acl_metadata
+from indigo.util import (
+    decode_meta,
+    default_cdmi_id,
+    meta_cassandra_to_cdmi,
+    meta_cdmi_to_cassandra,
+    merge,
+    metadata_to_list,
+    split,
+    datetime_serializer
+)
+
 
 class Resource(Model):
-    id        = columns.Text(primary_key=True, default=default_id)
-    name      = columns.Text(required=True, index=True)
-    container = columns.Text(required=True, index=True)
-    checksum  = columns.Text(required=False)
-    size      = columns.BigInt(required=False, default=0, index=True)
-    metadata  = columns.Map(columns.Text, columns.Text, index=True)
-    mimetype  = columns.Text(required=False)
-    url       = columns.Text(required=False)
-    create_ts   = columns.DateTime()
+    """Resource Model"""
+    id = columns.Text(default=default_cdmi_id, index=True)
+    container = columns.Text(primary_key=True, required=True)
+    name = columns.Text(primary_key=True, required=True)
+    checksum = columns.Text(required=False)
+    size = columns.BigInt(required=False, default=0, index=True)
+    metadata = columns.Map(columns.Text, columns.Text, index=True)
+    mimetype = columns.Text(required=False)
+    url = columns.Text(required=False)
+    create_ts = columns.DateTime()
     modified_ts = columns.DateTime()
     file_name = columns.Text(required=False, default="")
-    type       = columns.Text(required=False, default='UNKNOWN')
+    type = columns.Text(required=False, default='UNKNOWN')
 
     # The access columns contain lists of group IDs that are allowed
     # the specified permission. If the lists have at least one entry
     # then access is restricted, if there are no entries in a particular
     # list, then access is granted to all (authenticated users)
-    read_access   = columns.List(columns.Text)
-    edit_access   = columns.List(columns.Text)
-    write_access  = columns.List(columns.Text)
+    read_access = columns.List(columns.Text)
+    edit_access = columns.List(columns.Text)
+    write_access = columns.List(columns.Text)
     delete_access = columns.List(columns.Text)
 
+    logger = logging.getLogger('database')
 
     @classmethod
-    def create(self, **kwargs):
-        """
+    def create(cls, **kwargs):
+        """Create a new resource
+
         When we create a resource, the minimum we require is a name
         and a container. There is little chance of getting trustworthy
         versions of any of the other data at creation stage.
         """
 
-        # TODO: Handle unicode chars in the name
-        kwargs['name'] = kwargs['name'].strip()
+        # TODO: Allow name starting or ending with a space ?
+#         kwargs['name'] = kwargs['name'].strip()
         kwargs['create_ts'] = datetime.now()
         kwargs['modified_ts'] = kwargs['create_ts']
+
+        if 'metadata' in kwargs:
+            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+
         # Check the container exists
-        collection = indigo.models.collection.Collection.objects.filter(id=kwargs['container']).first()
+        from indigo.models.collection import Collection
+        collection = Collection.find_by_path(kwargs['container'])
+
         if not collection:
-            raise NoSuchCollection("That collection does not exist")
+            raise NoSuchCollectionError(kwargs['container'])
 
         # Make sure parent/name are not in use.
-        existing = self.objects.filter(container=kwargs['container']).all()
+        existing = cls.objects.filter(container=kwargs['container']).all()
         if kwargs['name'] in [e['name'] for e in existing]:
-            raise UniqueException("That name is in use in the current collection")
+            raise ResourceConflictError(merge(kwargs['container'],
+                                              kwargs['name']))
 
-        return super(Resource, self).create(**kwargs)
+        res = super(Resource, cls).create(**kwargs)
+
+        res.mqtt_publish('create')
+
+        return res
+
+    def mqtt_publish(self, operation):
+        payload = dict()
+        payload['id'] = self.id
+        payload['container'] = self.container
+        payload['name'] = self.name
+        payload['create_ts'] = self.create_ts
+        payload['modified_ts'] = self.modified_ts
+        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
+        topic = '{2}/resource{0}/{1}'.format(self.container, self.name, operation)
+        # Clean up the topic by removing superfluous slashes.
+        topic = '/'.join(filter(None, topic.split('/')))
+        # Remove MQTT wildcards from the topic. Corner-case: If the resource name is made entirely of # and + and a
+        # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
+        topic = topic.replace('#', '').replace('+', '')
+        logging.info('Publishing on topic "{0}"'.format(topic))
+        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+
+    def delete(self):
+        self.mqtt_publish('delete')
+        super(Resource, self).delete()
+
+    @classmethod
+    def find_by_id(cls, id_string):
+        """Find resource by id"""
+        return cls.objects.filter(id=id_string).first()
+
+    @classmethod
+    def find_by_path(cls, path):
+        """Find resource by path"""
+        coll_name, resc_name = split(path)
+        return cls.objects.filter(container=coll_name, name=resc_name).first()
+
+    def __unicode__(self):
+        return self.path()
+
+    def get_acl_metadata(self):
+        """Return a dictionary of acl based on the Resource schema"""
+        return serialize_acl_metadata(self)
 
     def get_container(self):
-        """
-        Returns the Collection object for the parent of the resource.
-        """
+        """Returns the parent collection of the resource"""
         # Check the container exists
-        container = indigo.models.collection.Collection.objects.filter(id=self.container).first()
+        from indigo.models.collection import Collection
+        container = Collection.find_by_path(self.container)
         if not container:
-            raise NoSuchCollection("That collection does not exist")
+            raise NoSuchCollectionError(self.container)
         else:
             return container
+
+    def get_metadata(self):
+        """Return a dictionary of metadata"""
+        return meta_cassandra_to_cdmi(self.metadata)
+
+    def get_metadata_key(self, key):
+        """Return the value of a metadata"""
+        return decode_meta(self.metadata.get(key, ""))
+
+    def md_to_list(self):
+        """Transform metadata to a list of couples for web ui"""
+        return metadata_to_list(self.metadata)
+
+    def path(self):
+        """Return the full path of the resource"""
+        return merge(self.container, self.name)
+
+    def to_dict(self, user=None):
+        """Return a dictionary which describes a resource for the web ui"""
+        data = {
+            "id": self.id,
+            "name": self.name,
+            "container": self.container,
+            "path": self.path(),
+            "checksum": self.checksum,
+            "size": self.size,
+            "metadata": self.md_to_list(),
+            "create_ts": self.create_ts,
+            "modified_ts": self.modified_ts,
+            "mimetype": self.mimetype or "application/octet-stream",
+            "type": self.type,
+            "filename": self.file_name,
+            "url": self.url,
+        }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+        return data
+
+    def update(self, **kwargs):
+        """Update a resource"""
+        kwargs['modified_ts'] = datetime.now()
+
+        if 'metadata' in kwargs:
+            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+
+        super(Resource, self).update(**kwargs)
+
+        self.mqtt_publish('update')
+
+        return self
 
     def user_can(self, user, action):
         """
@@ -86,38 +223,3 @@ class Resource(Model):
         # removed, it confirms presence in l
         groups = set(user.groups) - set(l)
         return len(groups) < len(user.groups)
-
-
-    def update(self, **kwargs):
-        kwargs['modified_ts'] = datetime.now()
-        return super(Resource, self).update(**kwargs)
-
-    @classmethod
-    def find_by_id(self, idstring):
-        return self.objects.filter(id=idstring).first()
-
-    def __unicode__(self):
-        return unicode(self.name)
-
-    def to_dict(self, user=None):
-        data =   {
-            "id": self.id,
-            "name": self.name,
-            "container_id": self.container,
-            "checksum": self.checksum,
-            "size": self.size,
-            "metadata": [(k,v) for k,v in self.metadata.iteritems()],
-            "create_ts": self.create_ts,
-            "modified_ts": self.modified_ts,
-            "mimetype": self.mimetype or "application/octet-stream",
-            "type": self.type,
-            "filename": self.file_name,
-            "url": self.url,
-        }
-        if user:
-            data['can_read'] = self.user_can(user, "read")
-            data['can_write'] = self.user_can(user, "write")
-            data['can_edit'] = self.user_can(user, "edit")
-            data['can_delete'] = self.user_can(user, "delete")
-        return data
-

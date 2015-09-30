@@ -1,4 +1,4 @@
-"""Indigo Base Driver.
+"""Utilities package for the archive
 
 Copyright 2015 Archive Analytics Solutions
 
@@ -15,21 +15,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from indigo.models.resource import Resource
+from indigo.models.collection import Collection
 
-class StorageDriver(object):
-    """Base Class to describe a driver
 
-    Drivers are used to interact with different storage media, based on
-    the url specified for a resource.  For instance, the cassandra:// url
-    is handled by the cassandra driver, file:// by the FileSystem driver.
-    """
+def path_exists(path):
+    """Check if the path is already in use"""
+    return is_resource(path) or is_collection(path)
 
-    def __init__(self, url=None):
-        self.url = url
 
-    def chunk_content(self):
-        """
-        Yields the content for the driver's URL, if any
-        a chunk at a time.
-        """
-        pass
+def is_resource(path):
+    """Check if the resource exists"""
+    return Resource.find_by_path(path) is not None
+
+
+def is_collection(path):
+    """Check if the collection exists"""
+    return Collection.find_by_path(path) is not None

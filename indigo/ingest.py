@@ -15,9 +15,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import os, sys, time
+import os
+import sys
+from os.path import expanduser
+import time
 from mimetypes import guess_type
 from cassandra.cqlengine.query import BatchQuery
+#Queue/Thread
+from Queue import Queue
+from threading import Thread
+import logging
 
 from indigo.models.search import SearchIndex
 from indigo.models.blob import Blob
@@ -25,38 +32,57 @@ from indigo.models.user import User
 from indigo.models.group import Group
 from indigo.models.collection import Collection
 from indigo.models.resource import Resource
-from indigo.models.errors import ResourceConflictError
+from indigo.models.errors import (
+    CollectionConflictError,
+    ResourceConflictError
+)
 from indigo.util import split
-
-
-
-# Queue/Thread
-from Queue import Queue
-from threading import Thread
 
 SKIP = (".pyc",)
 
+def create_logger():
+    logger = logging.getLogger('ingest')
+    logger.setLevel(logging.INFO)
+    log_dir = expanduser('~/.indigo')
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    ch = logging.FileHandler('{}/ingest.log'.format(log_dir))
+    ch.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s -%(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
+
+logger = create_logger()
 
 def do_ingest(cfg, args):
     if not args.user or not args.group or not args.folder:
-        print "Group, User and Folder are all required for ingesting data"
+        msg = "Group, User and Folder are all required for ingesting data"
+        logger.error(msg)
+        print msg
         sys.exit(1)
 
     # Check validity of the arguments (do user/group and folder)
     # actually exist.
     user = User.find(args.user)
     if not user:
-        print u"User '{}' not found".format(args.user)
+        msg = u"User '{}' not found".format(args.user)
+        logger.error(msg)
+        print msg
         sys.exit(1)
 
     group = Group.find(args.group)
     if not group:
-        print u"Group '{}' not found".format(args.group)
+        msg = u"Group '{}' not found".format(args.group)
+        logger.error(msg)
+        print msg
         sys.exit(1)
 
     path = os.path.abspath(args.folder)
     if not os.path.exists(path):
-        print u"Could not find path {}".format(path)
+        msg = u"Could not find path {}".format(path)
+        logger.error(msg)
+        print msg
 
     local_ip = args.local_ip
     skip_import = args.no_import
@@ -66,6 +92,7 @@ def do_ingest(cfg, args):
 
 
 class Ingester(object):
+
     def __init__(self, user, group, folder, local_ip='127.0.0.1', skip_import=False):
         self.groups = [group.id]
         self.user = user
@@ -79,14 +106,17 @@ class Ingester(object):
         self.queue = None
 
     def create_collection(self, parent_path, name, path):
-        d = dict(
-            container=parent_path,
-            name=name,
-            write_access=self.groups,
-            delete_access=self.groups,
-            edit_access=self.groups)
-
-        c = Collection.create(**d)
+        try:
+            d = {'container' : parent_path,
+                 'name' : name,
+                 'write_access' : self.groups,
+                 'delete_access' : self.groups,
+                 'edit_access' : self.groups,
+                }
+            c = Collection.create(**d)
+        except CollectionConflictError:
+            # Collection already exists
+            c = Collection.find_by_path(path)
         self.collection_cache[path] = c
         return c
 
@@ -104,23 +134,21 @@ class Ingester(object):
 
     def resource_for_file(self, path):
         t, _ = guess_type(path)
-        _, name = split(path)
+        _, name  = split(path)
         _, ext = os.path.splitext(path)
-        return dict(
-            mimetype=t,
-            size=os.path.getsize(path),
-            # read_access   = self.groups ,
-            write_access=self.groups,
-            delete_access=self.groups,
-            edit_access=self.groups,
-            file_name=name,
-            name=name,
-            type=ext[1:].upper()
-        )
+        return {"mimetype" : t,
+                "size" : os.path.getsize(path),
+                # "read_access" : self.groups,
+                "write_access" : self.groups,
+                "delete_access" : self.groups,
+                "edit_access" : self.groups,
+                "file_name" :  name,
+                "name" : name ,
+                "type" : ext[1:].upper(),
+               }
 
     def start(self):
-        """
-        Walks the folder creating collections when it finds a folder,
+        """Walks the folder creating collections when it finds a folder,
         and resources when it finds a file. This is done sequentially
         so multiple copies of this program can be run in parallel (each
         with a different root folder).
@@ -129,35 +157,39 @@ class Ingester(object):
         self.doWork()
         terminateThreading(self.queue)
 
-    def Create_Entry(self, rdict, context, do_load):
-        self.queue.put((rdict.copy(), context.copy(), do_load))
+    def Create_Entry(self,rdict, context, do_load):
+        self.queue.put( (rdict.copy(),context.copy(),do_load) )
         return
 
-
     def doWork(self):
+        TIMER = timer_counter()
+
         root_collection = Collection.get_root_collection()
         if not root_collection:
             root_collection = Collection.create_root()
         self.collection_cache["/"] = root_collection
 
-        for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks=True):
-            if '/.' in path: continue  # Ignore .paths
+        for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks = True ):
+            if '/.' in path: continue # Ignore .paths
             path = path.replace(self.folder, '')
 
             parent_path, name = split(path)
-            print "--  {} / '{}'".format(path, name)
+            logger.info("Processing {} - '{}'".format(path, name))
 
             if name:
+                TIMER.enter('get-collection')
                 parent = self.get_collection(parent_path)
 
                 current_collection = self.get_collection(path)
                 if not current_collection:
-                    current_collection = self.create_collection(parent.path(), name, path)
+                    current_collection = self.create_collection(parent_path,#parent.path(),
+                                                                name,
+                                                                path)
+                TIMER.exit('get-collection')
             else:
                 current_collection = root_collection
 
             # Now we can add the resources from self.folder + path
-            T1 = -time.time()
             for entry in files:
                 fullpath = self.folder + path + '/' + entry
                 if entry.startswith("."): continue
@@ -166,118 +198,130 @@ class Ingester(object):
 
                 rdict = self.resource_for_file(fullpath)
                 rdict["container"] = current_collection.path()
-
+                TIMER.enter('push')
                 self.Create_Entry(rdict,
-                                  dict(fullpath=fullpath,
-                                       collection=current_collection.path(),
-                                       local_ip=self.local_ip,
-                                       path=path,
-                                       entry=entry
-                                       ),
+                                  {"fullpath" : fullpath,
+                                   "container" : current_collection.path(),
+                                   "local_ip" : self.local_ip,
+                                   "path" : path,
+                                   "entry" : entry
+                                  },
                                   not self.skip_import)
-            T1 += time.time()
-            if len(files): print 'Count: {}, Elapsed: {:.1f}s Average {:.1f}ms '.format(len(files), T1,
-                                                                                        T1 * 1000 / len(files))
-        return None
+                TIMER.exit('push')
+
+        TIMER.summary()
 
 
 #### Heavy Lifting
 
-def initializeThreading(ctr=8):
-    CreateQueue = Queue(maxsize=800)  # Create a queue on which to put the create requests
-    for k in range(abs(ctr)):
-        t = ThreadClass(CreateQueue)  # Create a number of threads
-        t.setDaemon(True)  # Stops us finishing until all the threads gae exited
-        t.start()  # let it rip
-    return CreateQueue
 
+def initializeThreading(ctr=8) :
+    CreateQueue = Queue(maxsize=900)   # Create a queue on which to put the create requests
+    for k in range( abs(ctr) ) :
+        t = ThreadClass(CreateQueue)    # Create a number of threads
+        t.setDaemon(True)               # Stops us finishing until all the threads gae exited
+        t.start()                       # let it rip
+    return CreateQueue
 
 def terminateThreading(queue):
     from time import time
     T0 = time()
     queue.join()
-    print time() - T0, ' seconds to wrap up outstanding queue items'
+    print time() - T0,'seconds to wrap up outstanding'
 
 
-class ThreadClass(Thread):
-    def __init__(self, q):
+
+class ThreadClass(Thread) :
+
+    def __init__(self,q) :
         Thread.__init__(self)
         self.queue = q
 
-    def run(self):
-        while True:
+    def run(self) :
+        while True :
             args = self.queue.get()
-            Process_Create_Entry(*args)
+            self.Process_Create_Entry(*args)
             self.queue.task_done()
 
 
-def Process_Create_Entry_work(rdict, context, do_load):
-    """
-
-    :param rdict: kwargs
-    :param context:
-    :param do_load: boolean specifying whether to load or reference the file.
-    :return:  None
-
-    Take a create entry request from the directory tree walking main process and insert into the directory ....
-
-    """
-    b = BatchQuery()
-    # MOSTLY the resource will not exist... so  start by calculating the URL and trying to insert the entire record....
-    if not do_load:
-        url = "file://{}{}/{}".format(context['local_ip'], context['path'], context['entry'])
-    else:
-        with open(context['fullpath'], 'r') as f:
-            blob = Blob.create_from_file(f, rdict['size'])
-            if blob:
-                url = "cassandra://{}".format(blob.id)
-            else:
-                return None
-
-
-    # Try to insert ( create ) the record...
-    try:
-        resource = Resource.batch(b).create(url=url, **rdict)
-    except ResourceConflictError as excpt:
-        # If the create fails, the record already exists... so retrieve it...
-        resource = Resource.objects().get(container=context['collection'], name=rdict['name'])
-
-    # if the url is not correct then update
-    # TODO:  if the url is a block set that is stored internally then reduce it's count so that it can be garbage collected
-    if resource.url != url:
-        # if url.startswith('cassandra://') : tidy up the stored block count...
-        resource.batch(b).update(url=url)
-    b.execute()
-
-    SearchIndex.reset(resource.id)
-    SearchIndex.index(resource, ['name', 'metadata'])
-    return None
-
-
-def Process_Create_Entry(rdict, context, do_load):
-    retries = 4
-    while retries > 0:
+    def Process_Create_Entry_work(self, rdict, context, do_load ):
+        b = BatchQuery()
+        # MOSTLY the resource will not exist... so  start by calculating the URL and trying to insert the entire record....
+        if not do_load :
+            url = "file://{}{}/{}".format(context['local_ip'],
+                                          context['path'],
+                                          context['entry'])
+        else :
+            with open(context['fullpath'], 'r') as f:
+                blob = Blob.create_from_file(f, rdict['size'])
+                if blob:
+                    url="cassandra://{}".format(blob.id)
+                else:
+                    return None
+    
         try:
-            return Process_Create_Entry_work(rdict, context, do_load)
-        except Exception as e:
-            print e
-            print 'retrying...'
-            retries -= 1
-    raise
+            # OK -- try to insert ( create ) the record...
+            T1 = time.time()
+            resource = Resource.batch(b).create(url=url,**rdict)
+            msg = 'Resource {} created --> {}'.format(resource.name,
+                                                      time.time() - T1)
+            logger.info(msg)
+        except ResourceConflictError as excpt:
+            # If the create fails, the record already exists... so retrieve it...
+            T1 = time.time()
+            resource = Resource.objects().get(container=context['collection'],name=rdict['name'])
+            msg = "{} ::: Fetch Object -> {}".format(resource.name, time.time() - T1)
+            logger.info(msg)
+    
+        # if the url is not correct then update
+        # TODO:  if the url is a block set that is stored internally then reduce it's count so that it can be garbage collected.
+        T3 = None
+        if resource.url != url :
+            T2 = time.time()
+            # if url.startswith('cassandra://') : tidy up the stored block count...
+            resource.batch(b).update(url=url)
+            T3 = time.time()
+            msg = "{} ::: update -> {}".format(resource.name, T3 - T2)
+            logger.info(msg)
+    
+        T1 = time.time()
+        SearchIndex.reset(resource.id)
+        SearchIndex.index(resource, ['name' ,'metadata'])
+        
+        # msg = "Index Management -> {}".format(time.time() - T1)
+        # logger.info(msg)
+        b.execute()
+    
+    
+    def Process_Create_Entry(self, rdict, context, do_load ):
+        retries = 4
+        while retries > 0 :
+            try: 
+                return self.Process_Create_Entry_work(rdict, context, do_load )
+            except Exception as e :
+                logger.error("Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
+                                                                                           rdict['container'],
+                                                                                           retries,
+                                                                                           e))
+                retries -= 1
+        raise
 
 
 class timer_counter(dict):
     # Store triples of current start time, count and total time
+    trigger = 1
+
     def enter(self, tag):
-        rcd = self.get(tag, [0, 0, 0.0])
+        rcd = self.get(tag,[0 , 0 , 0.0])
         rcd[0] = time.time()
         rcd[1] += 1
         self[tag] = rcd
 
     def exit(self, tag):
-        rcd = self.get(tag, [time.time(), 1, 0.0])
-        rcd[2] += (time.time() - rcd[0])
+        rcd = self.get(tag,[time.time() , 1 , 0.0])
+        rcd[2] += ( time.time() - rcd[0])
 
     def summary(self):
-        for t, v in self.items():
-            print '{0:15s}:total:{3}, count:{2}'.format(t, *v)
+        for t,v in self.items():
+            logger.info('{0:15s}:total:{3}, count:{2}'.format(t,*v))
+

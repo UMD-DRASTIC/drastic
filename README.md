@@ -28,7 +28,9 @@ The file at settings.py only needs to be changed should the Cassandra Keyspace n
 
 #### Errors
 
-This module contains Indigo model-specific exceptions to be handled if problems occur when writing to the database, such as UniqueException to be raised when an attempt is made to write a new Collection with the name of an existing one.
+This module contains Indigo model-specific exceptions to be handled if problems
+occur when writing to the database, such as UniqueError to be raised when an
+attempt is made to write a new Collection with the name of an existing one.
 
 
 ### Drivers 
