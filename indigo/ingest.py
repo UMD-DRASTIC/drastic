@@ -339,10 +339,10 @@ class ThreadClass(Thread) :
             try: 
                 return self.Process_Create_Entry_work(rdict, context, do_load )
             except Exception as e :
-                logger.error("Problem creating entry: {}/{}, retry number: {} - {}").format(rdict['name'],
-                                                                                            rdict['container'],
-                                                                                            retries,
-                                                                                            e)
+                logger.error("Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
+                                                                                           rdict['container'],
+                                                                                           retries,
+                                                                                           e))
                 retries -= 1
         raise
 
