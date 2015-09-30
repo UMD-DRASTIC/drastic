@@ -328,8 +328,8 @@ class ThreadClass(Thread) :
         SearchIndex.reset(resource.id)
         SearchIndex.index(resource, ['name' ,'metadata'])
         
-        msg = "Index Management -> {}".format(time.time() - T1)
-        logger.info(msg)
+#         msg = "Index Management -> {}".format(time.time() - T1)
+#         logger.info(msg)
         b.execute()
     
     
