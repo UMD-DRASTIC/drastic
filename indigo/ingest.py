@@ -215,7 +215,7 @@ class Ingester(object):
 #### Heavy Lifting
 
 
-def initializeThreading(ctr=16) :
+def initializeThreading(ctr=8) :
     CreateQueue = Queue(maxsize=900)   # Create a queue on which to put the create requests
     for k in range( abs(ctr) ) :
         t = ThreadClass(CreateQueue)    # Create a number of threads
