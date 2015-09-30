@@ -72,6 +72,7 @@ class Collection(Model):
 #         kwargs['name'] = name
 #         kwargs['container'] = container
 
+        name = kwargs.get('name')
         container = kwargs.get('container', '/')
         kwargs['container'] = container
 
