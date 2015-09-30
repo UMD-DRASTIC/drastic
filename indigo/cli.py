@@ -150,7 +150,6 @@ def group_list(cfg):
                 ("N", "Y")[user.id == group.owner])
 
 
-
 def main():
     """Main"""
     args = parse_arguments()

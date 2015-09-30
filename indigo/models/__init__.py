@@ -33,9 +33,10 @@ from indigo.models.blob import (
     BlobPart
 )
 from indigo.models.activity import Activity
+from indigo.models.scripts import Script
 
 
-def initialise(keyspace, hosts=['127.0.0.1'], strategy="SimpleStrategy",
+def initialise(keyspace, hosts=('127.0.0.1',), strategy="SimpleStrategy",
                repl_factor=1):
     """Initialise Cassandra connection"""
     connection.setup(hosts, keyspace, protocol_version=3)
@@ -53,6 +54,7 @@ def sync():
     sync_table(Blob)
     sync_table(BlobPart)
     sync_table(Activity)
+    sync_table(Script)
 
 
 def destroy(keyspace):

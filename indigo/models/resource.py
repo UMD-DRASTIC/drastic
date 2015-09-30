@@ -16,8 +16,11 @@ limitations under the License.
 """
 
 from datetime import datetime
+import json
+import logging
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
+from paho.mqtt import publish
 
 from indigo.models.errors import (
     NoSuchCollectionError,
@@ -31,7 +34,8 @@ from indigo.util import (
     meta_cdmi_to_cassandra,
     merge,
     metadata_to_list,
-    split
+    split,
+    datetime_serializer
 )
 
 
@@ -59,6 +63,7 @@ class Resource(Model):
     write_access = columns.List(columns.Text)
     delete_access = columns.List(columns.Text)
 
+    logger = logging.getLogger('database')
 
     @classmethod
     def create(cls, **kwargs):
@@ -73,11 +78,14 @@ class Resource(Model):
 #         kwargs['name'] = kwargs['name'].strip()
         kwargs['create_ts'] = datetime.now()
         kwargs['modified_ts'] = kwargs['create_ts']
-        if kwargs.has_key('metadata'):
+
+        if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+
         # Check the container exists
         from indigo.models.collection import Collection
         collection = Collection.find_by_path(kwargs['container'])
+
         if not collection:
             raise NoSuchCollectionError(kwargs['container'])
 
@@ -87,12 +95,37 @@ class Resource(Model):
             raise ResourceConflictError(merge(kwargs['container'],
                                               kwargs['name']))
 
-        return super(Resource, cls).create(**kwargs)
+        res = super(Resource, cls).create(**kwargs)
+
+        res.mqtt_publish('create')
+
+        return res
+
+    def mqtt_publish(self, operation):
+        payload = dict()
+        payload['id'] = self.id
+        payload['container'] = self.container
+        payload['name'] = self.name
+        payload['create_ts'] = self.create_ts
+        payload['modified_ts'] = self.modified_ts
+        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
+        topic = '{2}/resource{0}/{1}'.format(self.container, self.name, operation)
+        # Clean up the topic by removing superfluous slashes.
+        topic = '/'.join(filter(None, topic.split('/')))
+        # Remove MQTT wildcards from the topic. Corner-case: If the resource name is made entirely of # and + and a
+        # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
+        topic = topic.replace('#', '').replace('+', '')
+        logging.info('Publishing on topic "{0}"'.format(topic))
+        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+
+    def delete(self):
+        self.mqtt_publish('delete')
+        super(Resource, self).delete()
 
     @classmethod
-    def find_by_id(cls, idstring):
+    def find_by_id(cls, id_string):
         """Find resource by id"""
-        return cls.objects.filter(id=idstring).first()
+        return cls.objects.filter(id=id_string).first()
 
     @classmethod
     def find_by_path(cls, path):
@@ -160,9 +193,15 @@ class Resource(Model):
     def update(self, **kwargs):
         """Update a resource"""
         kwargs['modified_ts'] = datetime.now()
-        if kwargs.has_key('metadata'):
+
+        if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
-        return super(Resource, self).update(**kwargs)
+
+        super(Resource, self).update(**kwargs)
+
+        self.mqtt_publish('update')
+
+        return self
 
     def user_can(self, user, action):
         """

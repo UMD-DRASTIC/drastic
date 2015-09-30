@@ -51,9 +51,9 @@ class Blob(Model):
         return blob
 
     @classmethod
-    def find(cls, id):
+    def find(cls, id_):
         """Find an object from its id"""
-        return cls.objects.filter(id=id).first()
+        return cls.objects.filter(id=id_).first()
 
     def __unicode__(self):
         return unicode(self.id)
@@ -67,9 +67,9 @@ class BlobPart(Model):
     blob_id = columns.Text(index=True)
 
     @classmethod
-    def find(cls, id):
+    def find(cls, id_):
         """Find an object from its id"""
-        return cls.objects.filter(id=id).first()
+        return cls.objects.filter(id=id_).first()
 
     def __unicode__(self):
         return unicode(self.id)

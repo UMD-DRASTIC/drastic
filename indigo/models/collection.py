@@ -16,8 +16,11 @@ limitations under the License.
 """
 
 from datetime import datetime
+import json
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
+import paho.mqtt.publish as publish
+import logging
 
 from indigo.models.resource import Resource
 from indigo.util import (
@@ -27,7 +30,8 @@ from indigo.util import (
     meta_cdmi_to_cassandra,
     merge,
     metadata_to_list,
-    split
+    split,
+    datetime_serializer
 )
 from indigo.acl import serialize_acl_metadata
 from indigo.models.errors import (
@@ -74,21 +78,29 @@ class Collection(Model):
         d = datetime.now()
         kwargs['create_ts'] = d
         kwargs['modified_ts'] = d
-        if kwargs.has_key('metadata'):
+
+        if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
         # Check if parent collection exists
         parent = Collection.find_by_path(container)
+
         if parent is None:
             raise NoSuchCollectionError(container)
+
         resource = Resource.find_by_path(merge(container, name))
+
         if resource is not None:
             raise ResourceConflictError(container)
         collection = Collection.find_by_path(merge(container, name))
+
         if collection is not None:
             raise CollectionConflictError(container)
 
-        return super(Collection, cls).create(**kwargs)
+        res = super(Collection, cls).create(**kwargs)
+        res.mqtt_publish('create')
+
+        return res
 
     @classmethod
     def create_root(cls):
@@ -101,6 +113,27 @@ class Collection(Model):
                           modified_ts=d)
         root.save()
         return root
+
+    def mqtt_publish(self, operation):
+        payload = dict()
+        payload['id'] = self.id
+        payload['container'] = self.container
+        payload['name'] = self.name
+        payload['create_ts'] = self.create_ts
+        payload['modified_ts'] = self.modified_ts
+        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
+        topic = '{2}/collection{0}/{1}'.format(self.container, self.name, operation)
+        # Clean up the topic by removing superfluous slashes.
+        topic = '/'.join(filter(None, topic.split('/')))
+        # Remove MQTT wildcards from the topic. Corner-case: If the collection name is made entirely of # and + and a
+        # script is set to run on such a collection name. But that's what you get if you use stupid names for things.
+        topic = topic.replace('#', '').replace('+', '')
+        logging.info('Publishing on topic "{0}"'.format(topic))
+        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+
+    def delete(self):
+        self.mqtt_publish('delete')
+        super(Collection, self).delete()
 
     @classmethod
     def delete_all(cls, path):
@@ -123,9 +156,9 @@ class Collection(Model):
         return cls.find_by_path(path)
 
     @classmethod
-    def find_by_id(cls, idstring):
+    def find_by_id(cls, id_string):
         """Return a collection from a uuid"""
-        return cls.objects.filter(id=idstring).first()
+        return cls.objects.filter(id=id_string).first()
 
     @classmethod
     def find_by_path(cls, path):
@@ -211,8 +244,12 @@ class Collection(Model):
     def update(self, **kwargs):
         """Update a collection"""
         kwargs['modified_ts'] = datetime.now()
-        if kwargs.has_key('metadata'):
+
+        if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+
+        self.mqtt_publish('update')
+
         return super(Collection, self).update(**kwargs)
 
     def user_can(self, user, action):
