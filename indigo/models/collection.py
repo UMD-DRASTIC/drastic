@@ -68,7 +68,8 @@ class Collection(Model):
 #         kwargs['name'] = name
 #         kwargs['container'] = container
 
-        kwargs['container'] = kwargs.get('container', '/')
+        container = kwargs.get('container', '/')
+        kwargs['container'] = container
 
         d = datetime.now()
         kwargs['create_ts'] = d
