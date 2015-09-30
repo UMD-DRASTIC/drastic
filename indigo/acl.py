@@ -17,7 +17,6 @@ limitations under the License.
 
 from collections import defaultdict, OrderedDict
 
-from indigo.models.resource import Resource
 
 # ACE Flags for ACL in CDMI
 ACEFLAG_NONE = 0x00000000
@@ -164,6 +163,7 @@ def serialize_acl_metadata(obj):
     """obj = Collection or Resource"""
     # Create a dictionary of acl from object metadata (stored in Cassandra
     # lists)
+    from indigo.models.resource import Resource
     is_object = isinstance(obj, Resource)
     acls = defaultdict(list)
     if len(obj.read_access) > 0:

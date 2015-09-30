@@ -23,6 +23,7 @@ from indigo.models.errors import (
     NoSuchCollectionError,
     ResourceConflictError
 )
+from indigo.acl import serialize_acl_metadata
 from indigo.util import (
     decode_meta,
     default_cdmi_id,
@@ -68,7 +69,8 @@ class Resource(Model):
         versions of any of the other data at creation stage.
         """
 
-        kwargs['name'] = kwargs['name'].strip()
+        # TODO: Allow name starting or ending with a space ?
+#         kwargs['name'] = kwargs['name'].strip()
         kwargs['create_ts'] = datetime.now()
         kwargs['modified_ts'] = kwargs['create_ts']
         if kwargs.has_key('metadata'):
@@ -100,6 +102,10 @@ class Resource(Model):
 
     def __unicode__(self):
         return self.path()
+
+    def get_acl_metadata(self):
+        """Return a dictionary of acl based on the Resource schema"""
+        return serialize_acl_metadata(self)
 
     def get_container(self):
         """Returns the parent collection of the resource"""

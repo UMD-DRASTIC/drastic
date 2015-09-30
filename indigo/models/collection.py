@@ -61,11 +61,15 @@ class Collection(Model):
         """Create a new collection
 
         We intercept the create call"""
-        container = kwargs.get('container', '/').strip()
-        name = kwargs.get('name').strip()
+        # TODO: Allow name starting or ending with a space ?
+#         container = kwargs.get('container', '/').strip()
+#         name = kwargs.get('name').strip()
+# 
+#         kwargs['name'] = name
+#         kwargs['container'] = container
 
-        kwargs['name'] = name
-        kwargs['container'] = container
+        kwargs['container'] = kwargs.get('container', '/')
+
         d = datetime.now()
         kwargs['create_ts'] = d
         kwargs['modified_ts'] = d
