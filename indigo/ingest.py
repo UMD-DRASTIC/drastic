@@ -32,7 +32,10 @@ from indigo.models.user import User
 from indigo.models.group import Group
 from indigo.models.collection import Collection
 from indigo.models.resource import Resource
-from indigo.models.errors import ResourceConflictError
+from indigo.models.errors import (
+    CollectionConflictError,
+    ResourceConflictError
+)
 from indigo.util import split
 
 SKIP = (".pyc",)
@@ -103,13 +106,17 @@ class Ingester(object):
         self.queue = None
 
     def create_collection(self, parent_path, name, path):
-        d = {'container' : parent_path,
-             'name' : name,
-             'write_access' : self.groups,
-             'delete_access' : self.groups,
-             'edit_access' : self.groups,
-            }
-        c = Collection.create(**d)
+        try:
+            d = {'container' : parent_path,
+                 'name' : name,
+                 'write_access' : self.groups,
+                 'delete_access' : self.groups,
+                 'edit_access' : self.groups,
+                }
+            c = Collection.create(**d)
+        except CollectionConflictError:
+            # Collection already exists
+            c = Collection.find_by_path(path)
         self.collection_cache[path] = c
         return c
 
@@ -328,8 +335,8 @@ class ThreadClass(Thread) :
         SearchIndex.reset(resource.id)
         SearchIndex.index(resource, ['name' ,'metadata'])
         
-#         msg = "Index Management -> {}".format(time.time() - T1)
-#         logger.info(msg)
+        msg = "Index Management -> {}".format(time.time() - T1)
+        logger.info(msg)
         b.execute()
     
     
