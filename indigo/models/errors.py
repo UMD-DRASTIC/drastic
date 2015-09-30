@@ -36,7 +36,7 @@ class NoSuchDriverError(BaseError):
 
 class ModelError(BaseError):
     """Base Class for storage Exceptions
- 
+
     Abstract Base Class from which more specific Exceptions are derived.
     """
 
@@ -95,17 +95,17 @@ class UserConflictError(ModelError):
 
 class UndiagnosedModelError(ModelError):
     """Undiagnosed Exception wrapper
- 
+
     A catchall Exception raised due to a situation that has not yet been
     diagnosed and dealt with specifically. This wraps the Exception raised
     from the underlying storage implementation.
     """
- 
+
     def __init__(self, path, exc):
         self.path = path
         # The Exception raised by the underlying storage implementation
         self.exc = exc
- 
+
     def __str__(self):
         return ("Operation on {0} caused an exception:\n{1}"
                 "".format(self.path, self.exc)

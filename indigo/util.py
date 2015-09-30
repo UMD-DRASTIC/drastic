@@ -23,6 +23,7 @@ import struct
 import base64
 import os.path
 import json
+from datetime import datetime
 
 IDENT_PEN = 42223
 # CDMI ObjectId Length: 8 bits header + 16bits uuid
@@ -272,3 +273,9 @@ def split(path):
     coll_name = os.path.dirname(path)
     resc_name = os.path.basename(path)
     return (coll_name, resc_name)
+
+
+def datetime_serializer(obj):
+    """Convert a datetime object to its string representataion for JSON serialization."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()

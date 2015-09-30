@@ -1,3 +1,2 @@
-
-
 KEYSPACE = "indigo"
+LOG_LEVEL = 'INFO'
