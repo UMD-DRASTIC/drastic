@@ -33,7 +33,6 @@ from indigo.models.blob import (
     BlobPart
 )
 from indigo.models.activity import Activity
-from indigo.models.scripts import Script
 
 
 def initialise(keyspace, hosts=('127.0.0.1',), strategy="SimpleStrategy",
@@ -54,7 +53,6 @@ def sync():
     sync_table(Blob)
     sync_table(BlobPart)
     sync_table(Activity)
-    sync_table(Script)
 
 
 def destroy(keyspace):
