@@ -182,7 +182,7 @@ class Ingester(object):
 
                 current_collection = self.get_collection(path)
                 if not current_collection:
-                    current_collection = self.create_collection(parent.path(),
+                    current_collection = self.create_collection(parent_path,#parent.path(),
                                                                 name,
                                                                 path)
                 TIMER.exit('get-collection')
