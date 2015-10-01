@@ -40,6 +40,17 @@ from indigo.util import split
 
 SKIP = (".pyc",)
 
+def decode_str(s):
+    try:
+        return s.decode('utf8')
+    except:
+        try:
+            return s.decode('iso8859-1')
+        except:
+            s_ignore = s.decode('utf8', 'ignore')
+            logger.error("Unicode decode error for {}, had to ignore character".format(s_ignore))
+            return s_ignore
+
 def create_logger():
     logger = logging.getLogger('ingest')
     logger.setLevel(logging.INFO)
@@ -162,19 +173,23 @@ class Ingester(object):
         return
 
     def doWork(self):
+        global cpt
         TIMER = timer_counter()
 
         root_collection = Collection.get_root_collection()
         if not root_collection:
             root_collection = Collection.create_root()
         self.collection_cache["/"] = root_collection
-
+        
         for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks = True ):
             if '/.' in path: continue # Ignore .paths
-            path = path.replace(self.folder, '')
-
+            # Remove prefix 
+            path = path[len(self.folder):]
+            # Convert to unicode
+            path = decode_str(path)
             parent_path, name = split(path)
-            logger.info("Processing {} - '{}'".format(path, name))
+            logger.info(u"Processing {} - '{}'".format(parent_path, name))
+            print u"Processing {}".format(path)
 
             if name:
                 TIMER.enter('get-collection')
@@ -191,11 +206,12 @@ class Ingester(object):
 
             # Now we can add the resources from self.folder + path
             for entry in files:
+                entry = decode_str(entry)
                 fullpath = self.folder + path + '/' + entry
                 if entry.startswith("."): continue
                 if entry.endswith(SKIP): continue
                 if not os.path.isfile(fullpath): continue
-
+ 
                 rdict = self.resource_for_file(fullpath)
                 rdict["container"] = current_collection.path()
                 TIMER.enter('push')
@@ -248,14 +264,14 @@ class ThreadClass(Thread) :
         b = BatchQuery()
         # MOSTLY the resource will not exist... so  start by calculating the URL and trying to insert the entire record....
         if not do_load :
-            url = "file://{}{}/{}".format(context['local_ip'],
-                                          context['path'],
-                                          context['entry'])
+            url = u"file://{}{}/{}".format(context['local_ip'],
+                                           context['path'],
+                                           context['entry'])
         else :
             with open(context['fullpath'], 'r') as f:
                 blob = Blob.create_from_file(f, rdict['size'])
                 if blob:
-                    url="cassandra://{}".format(blob.id)
+                    url = "cassandra://{}".format(blob.id)
                 else:
                     return None
     
@@ -263,14 +279,14 @@ class ThreadClass(Thread) :
             # OK -- try to insert ( create ) the record...
             T1 = time.time()
             resource = Resource.batch(b).create(url=url,**rdict)
-            msg = 'Resource {} created --> {}'.format(resource.name,
-                                                      time.time() - T1)
+            msg = u'Resource {} created --> {}'.format(resource.name,
+                                                       time.time() - T1)
             logger.info(msg)
         except ResourceConflictError as excpt:
             # If the create fails, the record already exists... so retrieve it...
             T1 = time.time()
             resource = Resource.objects().get(container=context['collection'],name=rdict['name'])
-            msg = "{} ::: Fetch Object -> {}".format(resource.name, time.time() - T1)
+            msg = u"{} ::: Fetch Object -> {}".format(resource.name, time.time() - T1)
             logger.info(msg)
     
         # if the url is not correct then update
@@ -281,7 +297,7 @@ class ThreadClass(Thread) :
             # if url.startswith('cassandra://') : tidy up the stored block count...
             resource.batch(b).update(url=url)
             T3 = time.time()
-            msg = "{} ::: update -> {}".format(resource.name, T3 - T2)
+            msg = u"{} ::: update -> {}".format(resource.name, T3 - T2)
             logger.info(msg)
     
         T1 = time.time()
@@ -299,10 +315,10 @@ class ThreadClass(Thread) :
             try: 
                 return self.Process_Create_Entry_work(rdict, context, do_load )
             except Exception as e :
-                logger.error("Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
-                                                                                           rdict['container'],
-                                                                                           retries,
-                                                                                           e))
+                logger.error(u"Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
+                                                                                            rdict['container'],
+                                                                                            retries,
+                                                                                            e))
                 retries -= 1
         raise
 

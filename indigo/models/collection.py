@@ -123,17 +123,17 @@ class Collection(Model):
         payload['create_ts'] = self.create_ts
         payload['modified_ts'] = self.modified_ts
         payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
-        topic = '{2}/collection{0}/{1}'.format(self.container, self.name, operation)
+        topic = u'{2}/collection{0}/{1}'.format(self.container, self.name, operation)
         # Clean up the topic by removing superfluous slashes.
         topic = '/'.join(filter(None, topic.split('/')))
         # Remove MQTT wildcards from the topic. Corner-case: If the collection name is made entirely of # and + and a
         # script is set to run on such a collection name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
-        logging.info('Publishing on topic "{0}"'.format(topic))
+        logging.info(u'Publishing on topic "{0}"'.format(topic))
         publish.single(topic, json.dumps(payload, default=datetime_serializer))
 
     def delete(self):
-        self.mqtt_publish('delete')
+        #self.mqtt_publish('delete')
         super(Collection, self).delete()
 
     @classmethod
