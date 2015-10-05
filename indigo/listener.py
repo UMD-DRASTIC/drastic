@@ -18,7 +18,7 @@
 Listens for CRUD events to the database and executes user-defined scripts based on those events.
 
 Usage:
-  listener.py <script_directory> [--quiet | --verbose]
+  listener.py <script_directory> <script_collection> [--quiet | --verbose]
   listener.py -h | --help
 
 Options:
@@ -30,19 +30,28 @@ Options:
 
 import logging
 import json
+import os
+import StringIO
+import subprocess
 
+# noinspection PyPackageRequirements
 from docopt import docopt
 import paho.mqtt.client as mqtt
+# noinspection PyPackageRequirements
+import magic
 
 from indigo import get_config
+from indigo import drivers
 import log
-from models import initialise
+from models import initialise, Collection
+from util import meta_cassandra_to_cdmi
 
 scripts = dict()
 
 
+# noinspection PyUnusedLocal
 def on_connect(client, userdata, flags, rc):
-    logger.info('Connected to MQTT broker with result code {0}'.format(str(rc)))
+    logger.info('Connected to MQTT broker with result code {0}'.format(rc))
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
@@ -51,6 +60,15 @@ def on_connect(client, userdata, flags, rc):
     logger.info('Listening on "{0}" for scripts'.format(script_directory_topic))
 
 
+# noinspection PyUnusedLocal
+def on_disconnect(client, userdata, rc):
+    if rc != 0:
+        logger.warning('Unexpected disconnection from MQTT broker with result code {0}'.format(rc))
+    else:
+        logger.info('Disconnected from MQTT broker')
+
+
+# noinspection PyUnusedLocal
 def on_message(client, userdata, msg):
     if mqtt.topic_matches_sub(script_directory_topic, msg.topic):
         path = msg.topic.split('/')
@@ -65,33 +83,118 @@ def on_message(client, userdata, msg):
             logger.debug('Payload: {}'.format(json.dumps(payload)))
             return
 
-        if operation is 'delete':
-            del scripts[script]
-        else:
-            scripts[script] = trigger_topic
+        if operation not in ('delete', 'create', 'update'):
+            logger.warning('Unknown operation "{0}" for script "{1}". Ignoring.'.format(operation, script))
+            return
 
-        logger.info('{1} script "{0}" for topic "{2}"'.format(script, operation, trigger_topic))
-        logger.debug('Payload: {}'.format(json.dumps(payload)))
+        script_full_path = os.path.join(script_directory, script)
+        script_path = os.path.dirname(script_full_path)
+        script_file_name = os.path.basename(script_full_path)
+
+        if operation is 'delete':
+            logger.info('{1} script "{0}" for topic "{2}"'.format(script, operation, trigger_topic))
+            del scripts[script]
+            os.unlink(os.path.join(script_path, script_file_name))
+            return
+
+        # TODO: Refactor this and combine it with the scan_script_collection() function.
+        driver = drivers.get_driver(payload['url'])
+
+        script_contents = StringIO.StringIO()
+
+        for chunk in driver.chunk_content():
+            script_contents.write(chunk)
+
+        script_type = magic.from_buffer(script_contents.getvalue())
+        logger.debug('Script "{0}" is apparently of type "{1}"'.format(script, script_type))
+
+        if script_type in ('Python script, ASCII text executable', 'ASCII text'):
+            logger.info('{1} script "{0}" for topic "{2}" at "{3}"'.format(script, operation,
+                                                                           trigger_topic, script_full_path))
+            logger.debug('Payload: {}'.format(json.dumps(payload)))
+
+            if not os.path.exists(script_path):
+                os.makedirs(script_path)
+
+            with open(script_full_path, 'w') as f:
+                f.write(script_contents.getvalue())
+
+            scripts[script] = {'topic': trigger_topic, 'path': script_full_path}
+        else:
+            logger.warning('File "{0}" appears not to be a Python script. Ignoring.'.format(script))
     else:
         useful_topic = False
 
         for script, sub in scripts.iteritems():
-            if mqtt.topic_matches_sub(sub, msg.topic):
+            if mqtt.topic_matches_sub(sub['topic'], msg.topic):
                 useful_topic = True
-                logger.info('execute script "{0}" for topic "{1}"'.format(script, msg.topic))
+                execute_script(sub['path'], msg.topic, msg.payload)
 
         if not useful_topic:
             logger.debug('Topic: {}'.format(msg.topic))
 
 
+def execute_script(script, topic, payload):
+    logger.info('execute script "{0}" for topic "{1}"'.format(script, topic))
+    absolute_path = os.path.abspath(script)
+    directory = os.path.dirname(absolute_path)
+    filename = os.path.basename(absolute_path)
+    # TODO: Currently runs the script as root! Change this in the Dockerfile
+    docker_cmd = 'docker run --rm -i -v {0}:/scripts:ro alloy_python'.format(directory)
+    logger.debug('{0} {1} {2} {3}'.format(docker_cmd, filename, topic, payload))
+    params = docker_cmd.split()
+    params.extend((filename, topic))
+    proc = subprocess.Popen(params, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
+    o = proc.communicate(input=payload)
+    logger.debug(o[0])
+
+
 def scan_script_collection(directory):
     logging.info('Scanning "{0}" for scripts'.format(directory))
+    collection = Collection.find_by_path(directory)
+
+    if collection is None:
+        logging.warning('There are no scripts to run because I am unable to find the collection "{0}" in the database.')
+        return
+
+    resource_count = collection.get_child_resource_count()
+    logging.info('{0} scripts found in collection "{1}"'.format(resource_count, directory))
+
+    # TODO: Refactor this and combine it with the on_message() function.
+    for resource in collection.get_child_resources():
+        url = resource.url
+        driver = drivers.get_driver(url)
+
+        script_contents = StringIO.StringIO()
+
+        for chunk in driver.chunk_content():
+            script_contents.write(chunk)
+
+        trigger_topic = meta_cassandra_to_cdmi(resource.metadata)['topic']
+        script = resource.name
+        script_type = magic.from_buffer(script_contents.getvalue())
+        script_full_path = os.path.join(script_directory, script)
+        script_path = os.path.dirname(script_full_path)
+        logger.debug('Script "{0}" is apparently of type "{1}"'.format(script, script_type))
+
+        if script_type in ('Python script, ASCII text executable', 'ASCII text'):
+            logger.info('{1} script "{0}" for topic "{2}" at "{3}"'.format(script, 'create',
+                                                                           trigger_topic, script_full_path))
+
+            if not os.path.exists(script_path):
+                os.makedirs(script_path)
+
+            with open(script_full_path, 'w') as f:
+                f.write(script_contents.getvalue())
+
+            scripts[script] = {'topic': trigger_topic, 'path': script_full_path}
 
 
 def init_mqtt():
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
+    client.on_disconnect = on_disconnect
 
     client.connect('localhost', 1883, 60)
     client.loop_forever()
@@ -112,8 +215,8 @@ if __name__ == '__main__':
     else:
         logger.setLevel(logging.INFO)
 
-    script_directory_topic = '+/resource/{0}/#'.format(arguments['<script_directory>'])
+    script_directory_topic = '+/resource/{0}/#'.format(arguments['<script_collection>'])
     script_directory_topic = '/'.join(filter(None, script_directory_topic.split('/')))
-    script_directory = '/' + '/'.join(script_directory_topic.split('/')[2:-1])
-    scan_script_collection(script_directory)
+    script_directory = arguments['<script_directory>']
+    scan_script_collection(arguments['<script_collection>'])
     init_mqtt()

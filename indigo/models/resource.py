@@ -104,6 +104,7 @@ class Resource(Model):
     def mqtt_publish(self, operation):
         payload = dict()
         payload['id'] = self.id
+        payload['url'] = self.url
         payload['container'] = self.container
         payload['name'] = self.name
         payload['create_ts'] = self.create_ts
