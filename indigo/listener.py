@@ -33,9 +33,14 @@ import json
 import os
 import StringIO
 import subprocess
+import sys
+import signal
 
 # noinspection PyPackageRequirements
 from docopt import docopt
+import gevent
+from gevent import monkey
+monkey.patch_all()
 import paho.mqtt.client as mqtt
 # noinspection PyPackageRequirements
 import magic
@@ -47,6 +52,7 @@ from models import initialise, Collection
 from util import meta_cassandra_to_cdmi
 
 scripts = dict()
+MAX_PROC_TIME = 12
 
 
 # noinspection PyUnusedLocal
@@ -134,19 +140,37 @@ def on_message(client, userdata, msg):
             logger.debug('Topic: {}'.format(msg.topic))
 
 
+def kill_container(pid):
+    logger.debug('Attempting to kill PID: {0}'.format(pid))
+    try:
+        os.kill(pid, signal.SIGKILL)
+        logger.warning('Process {0} was killed after {1} seconds. '
+                       'This might be just because the process is zombified '
+                       'and probably isn\'t anything to worry about'.format(pid, MAX_PROC_TIME))
+    except OSError:
+        logger.debug('Process {0} has already terminated'.format(pid))
+
+
+def mqtt_loop():
+    while True:
+        mqtt_client.loop()
+        gevent.sleep(0)
+
+
 def execute_script(script, topic, payload):
     logger.info('execute script "{0}" for topic "{1}"'.format(script, topic))
     absolute_path = os.path.abspath(script)
     directory = os.path.dirname(absolute_path)
     filename = os.path.basename(absolute_path)
-    # TODO: Currently runs the script as root! Change this in the Dockerfile
-    docker_cmd = 'docker run --rm -i -v {0}:/scripts:ro alloy_python'.format(directory)
+
+    docker_cmd = 'docker run --rm -i -v {0}:/scripts alloy_python'.format(directory)
     logger.debug('{0} {1} {2} {3}'.format(docker_cmd, filename, topic, payload))
     params = docker_cmd.split()
-    params.extend((filename, topic))
-    proc = subprocess.Popen(params, stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=False)
-    o = proc.communicate(input=payload)
-    logger.debug(o[0])
+    params.extend((filename, topic, payload))
+    proc = subprocess.Popen(params, shell=False, stdin=subprocess.PIPE, stdout=DEVNULL, stderr=subprocess.STDOUT)
+    gevent.spawn_later(MAX_PROC_TIME, kill_container, proc.pid)
+    proc.stdin.write(payload)
+    proc.stdin.close()
 
 
 def scan_script_collection(directory):
@@ -197,13 +221,25 @@ def init_mqtt():
     client.on_disconnect = on_disconnect
 
     client.connect('localhost', 1883, 60)
-    client.loop_forever()
 
+    return client
+
+
+# noinspection PyUnusedLocal
+def shutdown(_signo, _stack_frame):
+    logger.info('Stopping MQTT...')
+    mqtt_client.disconnect()
+
+    logger.info('Dereticulating splines... Done!')
+
+    sys.exit(0)
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='Listener v1.0')
 
     logger = log.init_log('listener')
+
+    signal.signal(signal.SIGTERM, shutdown)
 
     cfg = get_config(None)
     initialise(cfg.get('KEYSPACE', 'indigo'))
@@ -219,4 +255,8 @@ if __name__ == '__main__':
     script_directory_topic = '/'.join(filter(None, script_directory_topic.split('/')))
     script_directory = arguments['<script_directory>']
     scan_script_collection(arguments['<script_collection>'])
-    init_mqtt()
+
+    DEVNULL = open('/dev/null', 'w')
+
+    mqtt_client = init_mqtt()
+    mqtt_loop()
