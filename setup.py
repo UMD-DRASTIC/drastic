@@ -37,8 +37,8 @@ setup(
         "passlib==1.6.2",
         "nose==1.3.6",
         "blist==1.3.6",
-        "paho-mqtt==1.1",
-        "docopt==0.6.2"
+        "requests==2.7.0",
+        "crcmod==1.7"
     ],
     entry_points={
         'console_scripts': [
