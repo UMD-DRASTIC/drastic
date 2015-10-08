@@ -39,8 +39,7 @@ import signal
 # noinspection PyPackageRequirements
 from docopt import docopt
 import gevent
-from gevent import monkey
-monkey.patch_all()
+from gevent import monkey; monkey.patch_all()
 import paho.mqtt.client as mqtt
 # noinspection PyPackageRequirements
 import magic
@@ -163,6 +162,8 @@ def execute_script(script, topic, payload):
     directory = os.path.dirname(absolute_path)
     filename = os.path.basename(absolute_path)
 
+    # TODO: Limit the available memory for each instance.
+    # TODO: Open up certain ports.
     docker_cmd = 'docker run --rm -i -v {0}:/scripts alloy_python'.format(directory)
     logger.debug('{0} {1} {2} {3}'.format(docker_cmd, filename, topic, payload))
     params = docker_cmd.split()
