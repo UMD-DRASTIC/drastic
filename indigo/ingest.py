@@ -17,14 +17,12 @@ limitations under the License.
 
 import os
 import sys
-from os.path import expanduser
 import time
-from mimetypes import guess_type
-from cassandra.cqlengine.query import BatchQuery
-#Queue/Thread
-from Queue import Queue
 from threading import Thread
-import logging
+from mimetypes import guess_type
+from Queue import Queue
+
+from cassandra.cqlengine.query import BatchQuery
 
 from indigo.models.search import SearchIndex
 from indigo.models.blob import Blob
@@ -37,35 +35,25 @@ from indigo.models.errors import (
     ResourceConflictError
 )
 from indigo.util import split
+import log
 
+logger = log.init_log('ingest')
 SKIP = (".pyc",)
+
 
 def decode_str(s):
     try:
         return s.decode('utf8')
-    except:
+    except UnicodeDecodeError:
         try:
             return s.decode('iso8859-1')
-        except:
+        except UnicodeDecodeError:
             s_ignore = s.decode('utf8', 'ignore')
             logger.error("Unicode decode error for {}, had to ignore character".format(s_ignore))
             return s_ignore
 
-def create_logger():
-    logger = logging.getLogger('ingest')
-    logger.setLevel(logging.INFO)
-    log_dir = expanduser('~/.indigo')
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    ch = logging.FileHandler('{}/ingest.log'.format(log_dir))
-    ch.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s -%(levelname)s - %(message)s')
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-    return logger
 
-logger = create_logger()
-
+# noinspection PyUnusedLocal
 def do_ingest(cfg, args):
     if not args.user or not args.group or not args.folder:
         msg = "Group, User and Folder are all required for ingesting data"
@@ -118,12 +106,12 @@ class Ingester(object):
 
     def create_collection(self, parent_path, name, path):
         try:
-            d = {'container' : parent_path,
-                 'name' : name,
-                 'write_access' : self.groups,
-                 'delete_access' : self.groups,
-                 'edit_access' : self.groups,
-                }
+            d = {'container': parent_path,
+                 'name': name,
+                 'write_access': self.groups,
+                 'delete_access': self.groups,
+                 'edit_access': self.groups,
+                 }
             c = Collection.create(**d)
         except CollectionConflictError:
             # Collection already exists
@@ -145,18 +133,18 @@ class Ingester(object):
 
     def resource_for_file(self, path):
         t, _ = guess_type(path)
-        _, name  = split(path)
+        _, name = split(path)
         _, ext = os.path.splitext(path)
-        return {"mimetype" : t,
-                "size" : os.path.getsize(path),
+        return {"mimetype": t,
+                "size": os.path.getsize(path),
                 # "read_access" : self.groups,
-                "write_access" : self.groups,
-                "delete_access" : self.groups,
-                "edit_access" : self.groups,
-                "file_name" :  name,
-                "name" : name ,
-                "type" : ext[1:].upper(),
-               }
+                "write_access": self.groups,
+                "delete_access": self.groups,
+                "edit_access": self.groups,
+                "file_name": name,
+                "name": name,
+                "type": ext[1:].upper(),
+                }
 
     def start(self):
         """Walks the folder creating collections when it finds a folder,
@@ -164,26 +152,27 @@ class Ingester(object):
         so multiple copies of this program can be run in parallel (each
         with a different root folder).
         """
-        self.queue = initializeThreading()
-        self.doWork()
-        terminateThreading(self.queue)
+        self.queue = initialize_threading()
+        self.do_work()
+        terminate_threading(self.queue)
 
-    def Create_Entry(self,rdict, context, do_load):
-        self.queue.put( (rdict.copy(),context.copy(),do_load) )
+    def create_entry(self, rdict, context, do_load):
+        self.queue.put((rdict.copy(), context.copy(), do_load))
         return
 
-    def doWork(self):
-        global cpt
-        TIMER = timer_counter()
+    def do_work(self):
+        timer = TimerCounter()
 
         root_collection = Collection.get_root_collection()
         if not root_collection:
             root_collection = Collection.create_root()
         self.collection_cache["/"] = root_collection
-        
-        for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks = True ):
-            if '/.' in path: continue # Ignore .paths
-            # Remove prefix 
+
+        for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks=True):
+            if '/.' in path:
+                continue  # Ignore .paths
+
+            # Remove prefix
             path = path[len(self.folder):]
             # Convert to unicode
             path = decode_str(path)
@@ -192,15 +181,15 @@ class Ingester(object):
             print u"Processing {}".format(path)
 
             if name:
-                TIMER.enter('get-collection')
-                parent = self.get_collection(parent_path)
+                timer.enter('get-collection')
+                # parent = self.get_collection(parent_path)
 
                 current_collection = self.get_collection(path)
                 if not current_collection:
-                    current_collection = self.create_collection(parent_path,#parent.path(),
+                    current_collection = self.create_collection(parent_path,  # parent.path(),
                                                                 name,
                                                                 path)
-                TIMER.exit('get-collection')
+                timer.exit('get-collection')
             else:
                 current_collection = root_collection
 
@@ -208,113 +197,114 @@ class Ingester(object):
             for entry in files:
                 entry = decode_str(entry)
                 fullpath = self.folder + path + '/' + entry
-                if entry.startswith("."): continue
-                if entry.endswith(SKIP): continue
-                if not os.path.isfile(fullpath): continue
- 
+                if entry.startswith("."):
+                    continue
+                if entry.endswith(SKIP):
+                    continue
+                if not os.path.isfile(fullpath):
+                    continue
+
                 rdict = self.resource_for_file(fullpath)
                 rdict["container"] = current_collection.path()
-                TIMER.enter('push')
-                self.Create_Entry(rdict,
-                                  {"fullpath" : fullpath,
-                                   "container" : current_collection.path(),
-                                   "local_ip" : self.local_ip,
-                                   "path" : path,
-                                   "entry" : entry
-                                  },
+                timer.enter('push')
+                self.create_entry(rdict,
+                                  {"fullpath": fullpath,
+                                   "container": current_collection.path(),
+                                   "local_ip": self.local_ip,
+                                   "path": path,
+                                   "entry": entry
+                                   },
                                   not self.skip_import)
-                TIMER.exit('push')
+                timer.exit('push')
 
-        TIMER.summary()
-
-
-#### Heavy Lifting
+        timer.summary()
 
 
-def initializeThreading(ctr=8) :
-    CreateQueue = Queue(maxsize=900)   # Create a queue on which to put the create requests
-    for k in range( abs(ctr) ) :
-        t = ThreadClass(CreateQueue)    # Create a number of threads
+###############
+# Heavy Lifting
+###############
+def initialize_threading(ctr=8):
+    create_queue = Queue(maxsize=900)   # Create a queue on which to put the create requests
+    for k in range(abs(ctr)):
+        t = ThreadClass(create_queue)    # Create a number of threads
         t.setDaemon(True)               # Stops us finishing until all the threads gae exited
         t.start()                       # let it rip
-    return CreateQueue
+    return create_queue
 
-def terminateThreading(queue):
+
+def terminate_threading(queue):
     from time import time
-    T0 = time()
+    t0 = time()
     queue.join()
-    print time() - T0,'seconds to wrap up outstanding'
+    print('{} seconds to wrap up outstanding'.format(time() - t0))
 
 
+class ThreadClass(Thread):
 
-class ThreadClass(Thread) :
-
-    def __init__(self,q) :
+    def __init__(self, q):
         Thread.__init__(self)
         self.queue = q
 
-    def run(self) :
-        while True :
+    def run(self):
+        while True:
             args = self.queue.get()
-            self.Process_Create_Entry(*args)
+            self.process_create_entry(*args)
             self.queue.task_done()
 
-
-    def Process_Create_Entry_work(self, rdict, context, do_load ):
+    def process_create_entry_work(self, rdict, context, do_load):
         b = BatchQuery()
-        # MOSTLY the resource will not exist... so  start by calculating the URL and trying to insert the entire record....
-        if not do_load :
-            url = u"file://{}{}/{}".format(context['local_ip'],
-                                           context['path'],
-                                           context['entry'])
-        else :
+        # MOSTLY the resource will not exist. So start by calculating the URL and trying to insert the entire record.
+        if not do_load:
+            url = u"file://{}{}/{}".format(decode_str(context['local_ip']),
+                                           decode_str(context['path']),
+                                           decode_str(context['entry']))
+        else:
             with open(context['fullpath'], 'r') as f:
                 blob = Blob.create_from_file(f, rdict['size'])
                 if blob:
                     url = "cassandra://{}".format(blob.id)
                 else:
                     return None
-    
+
         try:
             # OK -- try to insert ( create ) the record...
-            T1 = time.time()
-            resource = Resource.batch(b).create(url=url,**rdict)
+            t1 = time.time()
+            resource = Resource.batch(b).create(url=url, **rdict)
             msg = u'Resource {} created --> {}'.format(resource.name,
-                                                       time.time() - T1)
+                                                       time.time() - t1)
             logger.info(msg)
-        except ResourceConflictError as excpt:
+        except ResourceConflictError:
             # If the create fails, the record already exists... so retrieve it...
-            T1 = time.time()
-            resource = Resource.objects().get(container=context['collection'],name=rdict['name'])
-            msg = u"{} ::: Fetch Object -> {}".format(resource.name, time.time() - T1)
+            t1 = time.time()
+            resource = Resource.objects().get(container=context['collection'], name=rdict['name'])
+            msg = u"{} ::: Fetch Object -> {}".format(resource.name, time.time() - t1)
             logger.info(msg)
-    
+
         # if the url is not correct then update
-        # TODO:  if the url is a block set that is stored internally then reduce it's count so that it can be garbage collected.
-        T3 = None
-        if resource.url != url :
-            T2 = time.time()
+        # TODO: If the URL is a block set that's stored internally, reduce its count so that it can be garbage collected
+        # t3 = None
+        if resource.url != url:
+            t2 = time.time()
             # if url.startswith('cassandra://') : tidy up the stored block count...
             resource.batch(b).update(url=url)
-            T3 = time.time()
-            msg = u"{} ::: update -> {}".format(resource.name, T3 - T2)
+            t3 = time.time()
+            msg = u"{} ::: update -> {}".format(resource.name, t3 - t2)
             logger.info(msg)
-    
-        T1 = time.time()
+
+        # t1 = time.time()
         SearchIndex.reset(resource.id)
-        SearchIndex.index(resource, ['name' ,'metadata'])
-        
-        # msg = "Index Management -> {}".format(time.time() - T1)
+        SearchIndex.index(resource, ['name', 'metadata'])
+
+        # msg = "Index Management -> {}".format(time.time() - t1)
         # logger.info(msg)
         b.execute()
-    
-    
-    def Process_Create_Entry(self, rdict, context, do_load ):
+
+    def process_create_entry(self, rdict, context, do_load):
         retries = 4
-        while retries > 0 :
-            try: 
-                return self.Process_Create_Entry_work(rdict, context, do_load )
-            except Exception as e :
+        while retries > 0:
+            try:
+                return self.process_create_entry_work(rdict, context, do_load)
+            except Exception as e:
                 logger.error(u"Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
                                                                                             rdict['container'],
                                                                                             retries,
@@ -323,21 +313,22 @@ class ThreadClass(Thread) :
         raise
 
 
-class timer_counter(dict):
+class TimerCounter(dict):
     # Store triples of current start time, count and total time
     trigger = 1
 
+    # noinspection PyTypeChecker
     def enter(self, tag):
-        rcd = self.get(tag,[0 , 0 , 0.0])
+        rcd = self.get(tag, [0, 0, 0.0])
         rcd[0] = time.time()
         rcd[1] += 1
         self[tag] = rcd
 
+    # noinspection PyTypeChecker
     def exit(self, tag):
-        rcd = self.get(tag,[time.time() , 1 , 0.0])
-        rcd[2] += ( time.time() - rcd[0])
+        rcd = self.get(tag, [time.time(), 1, 0.0])
+        rcd[2] += (time.time() - rcd[0])
 
     def summary(self):
-        for t,v in self.items():
-            logger.info('{0:15s}:total:{3}, count:{2}'.format(t,*v))
-
+        for t, v in self.items():
+            logger.info('{0:15s}:total:{3}, count:{2}'.format(t, *v))
