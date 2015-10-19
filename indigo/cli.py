@@ -57,6 +57,7 @@ def zap(cfg):
     destroy(keyspace)
 
 
+# noinspection PyUnusedLocal
 def user_list(cfg):
     """Print user list"""
     from indigo.models import User
@@ -64,6 +65,7 @@ def user_list(cfg):
         print "Username: {}, ID: {}".format(user.username, user.id)
 
 
+# noinspection PyUnusedLocal
 def user_add(cfg, username=None):
     """Add a new user"""
     from indigo.models import User
@@ -91,6 +93,7 @@ def user_add(cfg, username=None):
     print "Success: User with username {} has been created".format(username)
 
 
+# noinspection PyUnusedLocal
 def group_add(cfg, args):
     """Add a group"""
     from indigo.models import Group, User
@@ -109,6 +112,7 @@ def group_add(cfg, args):
     print "Created group '{}' with id: {}".format(name, group.id)
 
 
+# noinspection PyUnusedLocal
 def group_delete(cfg, args):
     """Delete a group"""
     from indigo.models import Group
@@ -122,6 +126,7 @@ def group_delete(cfg, args):
     print "Deleted group '{}' with id: {}".format(group.name, group.id)
 
 
+# noinspection PyUnusedLocal
 def group_add_user(cfg, args):
     """Add a user to a group"""
     from indigo.models import Group, User
@@ -139,6 +144,7 @@ def group_add_user(cfg, args):
     print "Added {} to {}".format(user.username, group.name)
 
 
+# noinspection PyUnusedLocal
 def group_list(cfg):
     """Print groups"""
     from indigo.models.group import Group
@@ -155,7 +161,7 @@ def main():
     args = parse_arguments()
     cfg = get_config(args.config)
 
-    initialise(cfg.get("KEYSPACE", "indigo"))
+    initialise(cfg.get("KEYSPACE", "indigo"), hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
 
     command = args.command[0]
     if command == 'create':
