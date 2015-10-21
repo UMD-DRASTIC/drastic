@@ -46,14 +46,14 @@ def parse_arguments():
 
 def create(cfg):
     """Create the keyspace and the tables"""
-    initialise(cfg.get("KEYSPACE", "indigo"))
+    initialise(cfg.get("KEYSPACE", "indigo"), hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
     sync()
 
 
 def zap(cfg):
     """Destroy the keyspace and the tables"""
     keyspace = cfg.get("KEYSPACE", "indigo")
-    initialise(keyspace)
+    initialise(keyspace, hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
     destroy(keyspace)
 
 
