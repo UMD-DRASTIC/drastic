@@ -179,7 +179,8 @@ def scan_script_collection(directory):
     collection = Collection.find_by_path(directory)
 
     if collection is None:
-        logging.warning('There are no scripts to run because I am unable to find the collection "{0}" in the database.')
+        logging.warning('There are no scripts to scan because I am unable '
+                        'to find the collection "{0}" in the database.'.format(directory))
         return
 
     resource_count = collection.get_child_resource_count()

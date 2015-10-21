@@ -149,16 +149,21 @@ class Collection(Model):
     def delete_all(cls, path):
         """Delete recursively all sub-collections and all resources contained
         in a collection at 'path'"""
-        parent_coll = Collection.find_by_path(path)
-        if not parent_coll:
+        parent = Collection.find_by_path(path)
+
+        if not parent:
             return
-        colls = list(parent_coll.get_child_collections())
-        rescs = list(parent_coll.get_child_resources())
-        for resc in rescs:
-            resc.delete()
-        for coll in colls:
-            Collection.delete_all(coll.path())
-        parent_coll.delete()
+
+        collections = list(parent.get_child_collections())
+        resources = list(parent.get_child_resources())
+
+        for resource in resources:
+            resource.delete()
+
+        for collection in collections:
+            Collection.delete_all(collection.path())
+
+        parent.delete()
 
     @classmethod
     def find(cls, path):
