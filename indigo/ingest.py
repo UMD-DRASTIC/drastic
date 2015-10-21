@@ -14,6 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
+import logging
 
 import os
 import sys
@@ -53,6 +54,9 @@ def decode_str(s):
             return s_ignore
 
 
+logger.setLevel(logging.WARNING)
+
+
 # noinspection PyUnusedLocal
 def do_ingest(cfg, args):
     if not args.user or not args.group or not args.folder:
@@ -83,16 +87,18 @@ def do_ingest(cfg, args):
         logger.error(msg)
         print msg
 
+    include_pattern = args.include
+
     local_ip = args.local_ip
     skip_import = args.no_import
 
-    ingester = Ingester(user, group, path, local_ip, skip_import)
+    ingester = Ingester(user, group, path, local_ip=local_ip, skip_import=skip_import, include_pattern=include_pattern)
     ingester.start()
 
 
 class Ingester(object):
 
-    def __init__(self, user, group, folder, local_ip='127.0.0.1', skip_import=False):
+    def __init__(self, user, group, folder, local_ip='127.0.0.1', skip_import=False, include_pattern=None):
         self.groups = [group.id]
         self.user = user
         self.folder = folder
@@ -102,6 +108,7 @@ class Ingester(object):
             self.local_ip = local_ip
         else:
             self.local_ip = '127.0.0.1'
+        self.include_pattern = include_pattern.lower()
         self.queue = None
 
     def create_collection(self, parent_path, name, path):
@@ -137,7 +144,7 @@ class Ingester(object):
         _, ext = os.path.splitext(path)
         return {"mimetype": t,
                 "size": os.path.getsize(path),
-                # "read_access" : self.groups,
+                # "read_access": self.groups,
                 "write_access": self.groups,
                 "delete_access": self.groups,
                 "edit_access": self.groups,
@@ -161,24 +168,54 @@ class Ingester(object):
         return
 
     def do_work(self):
+        # if self.include_pattern:
+        #     include_pattern = self.include_pattern.lower()
+        #     matcher = lambda x: include_pattern in x.lower()
+        # else:
+        #     matcher = lambda x: True
+
         timer = TimerCounter()
 
         root_collection = Collection.get_root_collection()
+
         if not root_collection:
             root_collection = Collection.create_root()
+
         self.collection_cache["/"] = root_collection
 
-        for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks=True):
+        t0 = time.time()
+        if self.include_pattern:
+            print self.include_pattern
+            start_dir = None
+            for (path, dirs, files) in os.walk(self.folder, topdown=True, followlinks=True):
+                for k in dirs:
+                    if self.include_pattern.lower() in k.lower():
+                        start_dir = os.path.join(path, k)
+                        break
+                if start_dir:
+                    break
+        else:
+            start_dir = self.folder
+
+        if start_dir:
+            print "STARTING AT ", start_dir
+        else:
+            print "No start dir matching {0} found ... giving up ".format(self.include_pattern)
+            return None
+
+        for (path, dirs, files) in os.walk(start_dir, topdown=True, followlinks=True):
             if '/.' in path:
                 continue  # Ignore .paths
 
-            # Remove prefix
-            path = path[len(self.folder):]
-            # Convert to unicode
-            path = decode_str(path)
+            path = path.replace(self.folder, '')
+
             parent_path, name = split(path)
-            logger.info(u"Processing {} - '{}'".format(parent_path, name))
-            print u"Processing {}".format(path)
+
+            t1 = time.time()
+            msg = "Processing {0} - '{1}' Previous={2:02f}s , this={3} files".format(path, name, t1 - t0, len(files))
+            t0 = t1
+            logger.info("Processing {} - '{}'".format(path, name))
+            print (msg)
 
             if name:
                 timer.enter('get-collection')
@@ -195,12 +232,13 @@ class Ingester(object):
 
             # Now we can add the resources from self.folder + path
             for entry in files:
-                entry = decode_str(entry)
                 fullpath = self.folder + path + '/' + entry
                 if entry.startswith("."):
                     continue
+
                 if entry.endswith(SKIP):
                     continue
+
                 if not os.path.isfile(fullpath):
                     continue
 
@@ -220,23 +258,21 @@ class Ingester(object):
         timer.summary()
 
 
-###############
 # Heavy Lifting
-###############
 def initialize_threading(ctr=8):
-    create_queue = Queue(maxsize=900)   # Create a queue on which to put the create requests
+    createqueue = Queue(maxsize=900)   # Create a queue on which to put the create requests
     for k in range(abs(ctr)):
-        t = ThreadClass(create_queue)    # Create a number of threads
+        t = ThreadClass(createqueue)    # Create a number of threads
         t.setDaemon(True)               # Stops us finishing until all the threads gae exited
         t.start()                       # let it rip
-    return create_queue
+    return createqueue
 
 
 def terminate_threading(queue):
     from time import time
     t0 = time()
     queue.join()
-    print('{} seconds to wrap up outstanding'.format(time() - t0))
+    print time() - t0, 'seconds to wrap up outstanding'
 
 
 class ThreadClass(Thread):
@@ -253,11 +289,11 @@ class ThreadClass(Thread):
 
     def process_create_entry_work(self, rdict, context, do_load):
         b = BatchQuery()
-        # MOSTLY the resource will not exist. So start by calculating the URL and trying to insert the entire record.
+        # MOSTLY the resource will not exist... so start by calculating the URL and trying to insert the entire record..
         if not do_load:
-            url = u"file://{}{}/{}".format(decode_str(context['local_ip']),
-                                           decode_str(context['path']),
-                                           decode_str(context['entry']))
+            url = "file://{}{}/{}".format(context['local_ip'],
+                                          context['path'],
+                                          context['entry'])
         else:
             with open(context['fullpath'], 'r') as f:
                 blob = Blob.create_from_file(f, rdict['size'])
@@ -270,25 +306,25 @@ class ThreadClass(Thread):
             # OK -- try to insert ( create ) the record...
             t1 = time.time()
             resource = Resource.batch(b).create(url=url, **rdict)
-            msg = u'Resource {} created --> {}'.format(resource.name,
-                                                       time.time() - t1)
+            msg = 'Resource {} created --> {}'.format(resource.name,
+                                                      time.time() - t1)
             logger.info(msg)
         except ResourceConflictError:
             # If the create fails, the record already exists... so retrieve it...
             t1 = time.time()
             resource = Resource.objects().get(container=context['collection'], name=rdict['name'])
-            msg = u"{} ::: Fetch Object -> {}".format(resource.name, time.time() - t1)
+            msg = "{} ::: Fetch Object -> {}".format(resource.name, time.time() - t1)
             logger.info(msg)
 
         # if the url is not correct then update
-        # TODO: If the URL is a block set that's stored internally, reduce its count so that it can be garbage collected
+        # TODO: if the url is a block set that is stored internally then reduce its count so that it can be GC'd.
         # t3 = None
         if resource.url != url:
             t2 = time.time()
             # if url.startswith('cassandra://') : tidy up the stored block count...
             resource.batch(b).update(url=url)
             t3 = time.time()
-            msg = u"{} ::: update -> {}".format(resource.name, t3 - t2)
+            msg = "{} ::: update -> {}".format(resource.name, t3 - t2)
             logger.info(msg)
 
         # t1 = time.time()
@@ -305,26 +341,25 @@ class ThreadClass(Thread):
             try:
                 return self.process_create_entry_work(rdict, context, do_load)
             except Exception as e:
-                logger.error(u"Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
-                                                                                            rdict['container'],
-                                                                                            retries,
-                                                                                            e))
+                logger.error("Problem creating entry: {}/{}, retry number: {} - {}".format(rdict['name'],
+                                                                                           rdict['container'],
+                                                                                           retries,
+                                                                                           e))
                 retries -= 1
         raise
 
 
+# noinspection PyTypeChecker
 class TimerCounter(dict):
     # Store triples of current start time, count and total time
     trigger = 1
 
-    # noinspection PyTypeChecker
     def enter(self, tag):
         rcd = self.get(tag, [0, 0, 0.0])
         rcd[0] = time.time()
         rcd[1] += 1
         self[tag] = rcd
 
-    # noinspection PyTypeChecker
     def exit(self, tag):
         rcd = self.get(tag, [time.time(), 1, 0.0])
         rcd[2] += (time.time() - rcd[0])

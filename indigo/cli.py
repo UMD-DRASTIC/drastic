@@ -41,6 +41,8 @@ def parse_arguments():
                         help='Set if we do not want to import the files into Cassandra')
     parser.add_argument('--localip', dest='local_ip', action='store',
                         help='Specify the IP address for this machine (subnets/private etc)')
+    parser.add_argument('--include', dest='include', action='store',
+                        help='include ONLY paths that include this string')
     return parser.parse_args()
 
 
