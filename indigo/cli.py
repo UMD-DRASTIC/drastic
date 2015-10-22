@@ -46,16 +46,15 @@ def parse_arguments():
     return parser.parse_args()
 
 
+# noinspection PyUnusedLocal
 def create(cfg):
     """Create the keyspace and the tables"""
-    initialise(cfg.get("KEYSPACE", "indigo"), hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
     sync()
 
 
 def zap(cfg):
     """Destroy the keyspace and the tables"""
-    keyspace = cfg.get("KEYSPACE", "indigo")
-    initialise(keyspace, hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
+    keyspace = cfg.get('KEYSPACE', 'indigo')
     destroy(keyspace)
 
 
@@ -163,7 +162,9 @@ def main():
     args = parse_arguments()
     cfg = get_config(args.config)
 
-    initialise(cfg.get("KEYSPACE", "indigo"), hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
+    initialise(cfg.get('KEYSPACE', 'indigo'),
+               hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
+               repl_factor=cfg.get('REPLICATION_FACTOR', 1))
 
     command = args.command[0]
     if command == 'create':
