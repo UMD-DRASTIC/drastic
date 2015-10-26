@@ -38,6 +38,8 @@ from indigo.util import (
     datetime_serializer
 )
 
+import indigo.drivers
+
 
 class Resource(Model):
     """Resource Model"""
@@ -128,6 +130,9 @@ class Resource(Model):
         publish.single(topic, json.dumps(payload, default=datetime_serializer))
 
     def delete(self):
+        driver = indigo.drivers.get_driver(self.url)
+        driver.delete_blob()
+
         state = self.mqtt_get_state()
         self.mqtt_publish('delete', state, {})
         super(Resource, self).delete()
