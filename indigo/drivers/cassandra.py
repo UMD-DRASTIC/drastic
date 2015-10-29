@@ -16,6 +16,7 @@ limitations under the License.
 """
 
 from cStringIO import StringIO
+import logging
 import zipfile
 
 from indigo.drivers.base import StorageDriver
@@ -39,8 +40,8 @@ class CassandraDriver(StorageDriver):
         a chunk at a time.  The value yielded is the size of
         the chunk and the content chunk itself.
         """
-        for idstring in self.blob.parts:
-            bp = BlobPart.find(idstring)
+        for blob_id in self.blob.parts:
+            bp = BlobPart.find(blob_id)
             if bp.compressed:
                 data = StringIO(bp.content)
                 z = zipfile.ZipFile(data, 'r')
@@ -50,3 +51,13 @@ class CassandraDriver(StorageDriver):
                 yield content
             else:
                 yield bp.content
+
+    def delete_blob(self):
+        logging.debug('Deleting blob "{0}"'.format(self.blob))
+
+        for blob_id in self.blob.parts:
+            bp = BlobPart.find(blob_id)
+            logging.debug('Deleting blobpart "{0}"'.format(bp))
+            bp.delete()
+
+        self.blob.delete()

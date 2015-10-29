@@ -274,9 +274,9 @@ def merge(coll_name, resc_name):
     """Create a full path from a collection name and a resource name"""
     if coll_name == '/':
         # For root we don't add the extra '/'
-        return unicode("{}{}".format(coll_name, resc_name))
+        return u"{}{}".format(coll_name, resc_name)
     else:
-        return unicode("{}/{}".format(coll_name, resc_name))
+        return u"{}/{}".format(coll_name, resc_name)
 
 
 def split(path):

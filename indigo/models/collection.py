@@ -68,7 +68,7 @@ class Collection(Model):
         # TODO: Allow name starting or ending with a space ?
 #         container = kwargs.get('container', '/').strip()
 #         name = kwargs.get('name').strip()
-# 
+#
 #         kwargs['name'] = name
 #         kwargs['container'] = container
 
@@ -99,7 +99,8 @@ class Collection(Model):
             raise CollectionConflictError(container)
 
         res = super(Collection, cls).create(**kwargs)
-        res.mqtt_publish('create')
+        state = res.mqtt_get_state()
+        res.mqtt_publish('create', {}, state)
 
         return res
 
@@ -115,7 +116,7 @@ class Collection(Model):
         root.save()
         return root
 
-    def mqtt_publish(self, operation):
+    def mqtt_get_state(self):
         payload = dict()
         payload['id'] = self.id
         payload['container'] = self.container
@@ -123,33 +124,46 @@ class Collection(Model):
         payload['create_ts'] = self.create_ts
         payload['modified_ts'] = self.modified_ts
         payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
-        topic = '{2}/collection{0}/{1}'.format(self.container, self.name, operation)
+
+        return payload
+
+    def mqtt_publish(self, operation, pre_state, post_state):
+        payload = dict()
+        payload['pre'] = pre_state
+        payload['post'] = post_state
+        topic = u'{0}/collection{1}/{2}'.format(operation, self.container, self.name)
         # Clean up the topic by removing superfluous slashes.
         topic = '/'.join(filter(None, topic.split('/')))
         # Remove MQTT wildcards from the topic. Corner-case: If the collection name is made entirely of # and + and a
         # script is set to run on such a collection name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
-        logging.info('Publishing on topic "{0}"'.format(topic))
+        logging.info(u'Publishing on topic "{0}"'.format(topic))
         publish.single(topic, json.dumps(payload, default=datetime_serializer))
 
     def delete(self):
-        self.mqtt_publish('delete')
+        state = self.mqtt_get_state()
+        self.mqtt_publish('delete', state, {})
         super(Collection, self).delete()
 
     @classmethod
     def delete_all(cls, path):
         """Delete recursively all sub-collections and all resources contained
         in a collection at 'path'"""
-        parent_coll = Collection.find_by_path(path)
-        if not parent_coll:
+        parent = Collection.find_by_path(path)
+
+        if not parent:
             return
-        colls = list(parent_coll.get_child_collections())
-        rescs = list(parent_coll.get_child_resources())
-        for resc in rescs:
-            resc.delete()
-        for coll in colls:
-            Collection.delete_all(coll.path())
-        parent_coll.delete()
+
+        collections = list(parent.get_child_collections())
+        resources = list(parent.get_child_resources())
+
+        for resource in resources:
+            resource.delete()
+
+        for collection in collections:
+            Collection.delete_all(collection.path())
+
+        parent.delete()
 
     @classmethod
     def find(cls, path):
@@ -244,14 +258,22 @@ class Collection(Model):
 
     def update(self, **kwargs):
         """Update a collection"""
+        pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
 
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
-        self.mqtt_publish('update')
+        super(Collection, self).update(**kwargs)
 
-        return super(Collection, self).update(**kwargs)
+        post_state = self.mqtt_get_state()
+
+        if pre_state['metadata'] == post_state['metadata']:
+            self.mqtt_publish('update_object', pre_state, post_state)
+        else:
+            self.mqtt_publish('update_metadata', pre_state, post_state)
+
+        return self
 
     def user_can(self, user, action):
         """

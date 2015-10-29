@@ -32,4 +32,7 @@ class StorageDriver(object):
         Yields the content for the driver's URL, if any
         a chunk at a time.
         """
+        raise NotImplementedError
+
+    def delete_blob(self):
         pass

@@ -38,6 +38,8 @@ from indigo.util import (
     datetime_serializer
 )
 
+import indigo.drivers
+
 
 class Resource(Model):
     """Resource Model"""
@@ -97,29 +99,42 @@ class Resource(Model):
 
         res = super(Resource, cls).create(**kwargs)
 
-        res.mqtt_publish('create')
+        state = res.mqtt_get_state()
+        res.mqtt_publish('create', {}, state)
 
         return res
 
-    def mqtt_publish(self, operation):
+    def mqtt_get_state(self):
         payload = dict()
         payload['id'] = self.id
+        payload['url'] = self.url
         payload['container'] = self.container
         payload['name'] = self.name
         payload['create_ts'] = self.create_ts
         payload['modified_ts'] = self.modified_ts
         payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
-        topic = '{2}/resource{0}/{1}'.format(self.container, self.name, operation)
+
+        return payload
+
+    def mqtt_publish(self, operation, pre_state, post_state):
+        payload = dict()
+        payload['pre'] = pre_state
+        payload['post'] = post_state
+        topic = u'{0}/resource{1}/{2}'.format(operation, self.container, self.name)
         # Clean up the topic by removing superfluous slashes.
         topic = '/'.join(filter(None, topic.split('/')))
         # Remove MQTT wildcards from the topic. Corner-case: If the resource name is made entirely of # and + and a
         # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
-        logging.info('Publishing on topic "{0}"'.format(topic))
+        logging.info(u'Publishing on topic "{0}"'.format(topic))
         publish.single(topic, json.dumps(payload, default=datetime_serializer))
 
     def delete(self):
-        self.mqtt_publish('delete')
+        driver = indigo.drivers.get_driver(self.url)
+        driver.delete_blob()
+
+        state = self.mqtt_get_state()
+        self.mqtt_publish('delete', state, {})
         super(Resource, self).delete()
 
     @classmethod
@@ -192,6 +207,7 @@ class Resource(Model):
 
     def update(self, **kwargs):
         """Update a resource"""
+        pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
 
         if 'metadata' in kwargs:
@@ -199,7 +215,12 @@ class Resource(Model):
 
         super(Resource, self).update(**kwargs)
 
-        self.mqtt_publish('update')
+        post_state = self.mqtt_get_state()
+
+        if pre_state['metadata'] == post_state['metadata']:
+            self.mqtt_publish('update_object', pre_state, post_state)
+        else:
+            self.mqtt_publish('update_metadata', pre_state, post_state)
 
         return self
 
