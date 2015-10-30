@@ -49,7 +49,7 @@ class Collection(Model):
     metadata = columns.Map(columns.Text, columns.Text, index=True)
     create_ts = columns.DateTime()
     modified_ts = columns.DateTime()
-    is_root = columns.Boolean(default=False, index=True)
+    is_root = columns.Boolean(default=False)
 
     # The access columns contain lists of group IDs that are allowed
     # the specified permission. If the lists have at least one entry
@@ -191,7 +191,7 @@ class Collection(Model):
     @classmethod
     def get_root_collection(cls):
         """Return the root collection"""
-        return cls.objects.filter(is_root=True).first()
+        return cls.objects.filter(container='null',name='Home').first()
 
     def __unicode__(self):
         return self.path()
