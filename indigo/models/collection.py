@@ -39,11 +39,12 @@ from indigo.models.errors import (
     ResourceConflictError,
     NoSuchCollectionError
 )
+from indigo.models.id_index import IDIndex
 
 
 class Collection(Model):
     """Collection model"""
-    id = columns.Text(default=default_cdmi_id, index=True)
+    id = columns.Text(default=default_cdmi_id)
     container = columns.Text(primary_key=True, required=False)
     name = columns.Text(primary_key=True, required=True)
     metadata = columns.Map(columns.Text, columns.Text, index=True)
@@ -101,7 +102,11 @@ class Collection(Model):
         res = super(Collection, cls).create(**kwargs)
         state = res.mqtt_get_state()
         res.mqtt_publish('create', {}, state)
-
+        
+        # Create a row in the ID index table
+        idx = IDIndex.create(id=res.id,
+                             classname="indigo.models.collection.Collection",
+                             key=res.path())
         return res
 
     @classmethod
@@ -143,6 +148,9 @@ class Collection(Model):
     def delete(self):
         state = self.mqtt_get_state()
         self.mqtt_publish('delete', state, {})
+        idx = IDIndex.find(self.id)
+        if idx:
+            idx.delete()
         super(Collection, self).delete()
 
     @classmethod
@@ -173,7 +181,11 @@ class Collection(Model):
     @classmethod
     def find_by_id(cls, id_string):
         """Return a collection from a uuid"""
-        return cls.objects.filter(id=id_string).first()
+        idx = IDIndex.find(id_string)
+        if idx:
+            if idx.classname == "indigo.models.collection.Collection":
+                return cls.find(idx.key)
+        return None
 
     @classmethod
     def find_by_path(cls, path):

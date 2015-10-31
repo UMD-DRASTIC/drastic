@@ -33,6 +33,7 @@ from indigo.models.search import SearchIndex
 from indigo.models.resource import Resource
 from indigo.models.blob import Blob, BlobPart
 from indigo.models.activity import Activity
+from indigo.models.id_index import IDIndex
 
 from indigo.log import init_log
 
@@ -65,7 +66,8 @@ def initialise(keyspace, hosts=('127.0.0.1',), strategy='SimpleStrategy',
 
 def sync():
     """Create tables for the different models"""
-    tables = (User, Node, Collection, Resource, Group, SearchIndex, Blob, BlobPart, Activity)
+    tables = (User, Node, Collection, Resource, Group, SearchIndex, Blob,
+              BlobPart, Activity, IDIndex)
 
     for table in tables:
         logger.info('Syncing table "{0}"'.format(table.__name__))

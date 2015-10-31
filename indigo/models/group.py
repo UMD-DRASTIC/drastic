@@ -41,7 +41,8 @@ class Group(Model):
         existing = cls.objects.filter(name=kwargs['name']).first()
         if existing:
             raise GroupConflictError(kwargs['name'])
-        return super(Group, cls).create(**kwargs)
+        grp = super(Group, cls).create(**kwargs)
+        return grp
 
     @classmethod
     def find(cls, name):

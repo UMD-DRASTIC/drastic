@@ -37,13 +37,14 @@ from indigo.util import (
     split,
     datetime_serializer
 )
+from indigo.models.id_index import IDIndex
 
 import indigo.drivers
 
 
 class Resource(Model):
     """Resource Model"""
-    id = columns.Text(default=default_cdmi_id, index=True)
+    id = columns.Text(default=default_cdmi_id)
     container = columns.Text(primary_key=True, required=True)
     name = columns.Text(primary_key=True, required=True)
     checksum = columns.Text(required=False)
@@ -101,6 +102,11 @@ class Resource(Model):
 
         state = res.mqtt_get_state()
         res.mqtt_publish('create', {}, state)
+        
+        # Create a row in the ID index table
+        idx = IDIndex.create(id=res.id,
+                             classname="indigo.models.resource.Resource",
+                             key=res.path())
 
         return res
 
@@ -132,15 +138,26 @@ class Resource(Model):
     def delete(self):
         driver = indigo.drivers.get_driver(self.url)
         driver.delete_blob()
-
         state = self.mqtt_get_state()
         self.mqtt_publish('delete', state, {})
+        idx = IDIndex.find(self.id)
+        if idx:
+            idx.delete()
         super(Resource, self).delete()
 
     @classmethod
+    def find(cls, path):
+        """Return a resource from a path"""
+        return cls.find_by_path(path)
+
+    @classmethod
     def find_by_id(cls, id_string):
-        """Find resource by id"""
-        return cls.objects.filter(id=id_string).first()
+        """Return a resource from a uuid"""
+        idx = IDIndex.find(id_string)
+        if idx:
+            if idx.classname == "indigo.models.resource.Resource":
+                return cls.find(idx.key)
+        return None
 
     @classmethod
     def find_by_path(cls, path):
