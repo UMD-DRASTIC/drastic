@@ -108,7 +108,10 @@ class Ingester(object):
             self.local_ip = local_ip
         else:
             self.local_ip = '127.0.0.1'
-        self.include_pattern = include_pattern.lower()
+        if include_pattern:
+            self.include_pattern = include_pattern.lower()
+        else:
+            self.include_pattern = None
         self.queue = None
 
     def create_collection(self, parent_path, name, path):
