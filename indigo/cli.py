@@ -52,12 +52,6 @@ def create(cfg):
     sync()
 
 
-def zap(cfg):
-    """Destroy the keyspace and the tables"""
-    keyspace = cfg.get('KEYSPACE', 'indigo')
-    destroy(keyspace)
-
-
 # noinspection PyUnusedLocal
 def user_list(cfg):
     """Print user list"""
@@ -181,7 +175,5 @@ def main():
         group_add_user(cfg, args.command[1:])
     elif command == 'group-delete':
         group_delete(cfg, args.command[1:])
-    elif command == 'zap':
-        zap(cfg)
     elif command == 'ingest':
         do_ingest(cfg, args)
