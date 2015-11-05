@@ -105,7 +105,7 @@ class User(Model):
             'email': self.email,
             'administrator': self.administrator,
             'active': self.active,
-            'groups': [g.to_dict for g in Group.find_by_ids(self.groups)]
+            'groups': [g.to_dict() for g in Group.find_by_ids(self.groups)]
         }
 
     def update(self, **kwargs):
