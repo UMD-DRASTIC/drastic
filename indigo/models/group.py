@@ -18,6 +18,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+# TODO: Improve the get users functions which will be slow if there are a lot
+# of users
+
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
@@ -72,9 +75,20 @@ class Group(Model):
         return [u for u in User.objects.all()
                 if u.active and self.id in u.groups]
 
+    def get_usernames(self):
+        """Get a list of usernames of the group"""
+        # Slow and ugly, not sure I like having to iterate
+        # through all of the Users but the __in suffix for
+        # queries won't let me query all users where this
+        # objects ID appears in the User group field.
+        from indigo.models import User
+        return [u.username for u in User.objects.all()
+                if u.active and self.id in u.groups]
+
     def to_dict(self):
         """Return a dictionary that represents the group"""
         return {
             'id': self.id,
             'name': self.name,
+            'members': self.get_usernames()
         }
