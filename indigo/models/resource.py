@@ -93,7 +93,8 @@ class Resource(Model):
             raise NoSuchCollectionError(kwargs['container'])
 
         # Make sure parent/name are not in use.
-        existing = cls.objects.filter(container=kwargs['container']).first()
+        existing = cls.objects.filter(container=kwargs['container'],
+                                      name=kwargs['name']).first()
         if existing:
             raise ResourceConflictError(merge(kwargs['container'],
                                               kwargs['name']))
