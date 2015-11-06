@@ -151,7 +151,6 @@ class Ingester(object):
                 "write_access": self.groups,
                 "delete_access": self.groups,
                 "edit_access": self.groups,
-                "file_name": name,
                 "name": name,
                 "type": ext[1:].upper(),
                 }

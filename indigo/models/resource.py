@@ -54,7 +54,6 @@ class Resource(Model):
     url = columns.Text(required=False)
     create_ts = columns.DateTime()
     modified_ts = columns.DateTime()
-    file_name = columns.Text(required=False, default="")
     type = columns.Text(required=False, default='UNKNOWN')
 
     # The access columns contain lists of group IDs that are allowed
@@ -213,7 +212,6 @@ class Resource(Model):
             "modified_ts": self.modified_ts,
             "mimetype": self.mimetype or "application/octet-stream",
             "type": self.type,
-            "filename": self.file_name,
             "url": self.url,
         }
         if user:
