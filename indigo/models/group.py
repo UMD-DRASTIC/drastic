@@ -82,7 +82,7 @@ class Group(Model):
         # queries won't let me query all users where this
         # objects ID appears in the User group field.
         from indigo.models import User
-        return [u.username for u in User.objects.all()
+        return [u.name for u in User.objects.all()
                 if u.active and self.id in u.groups]
 
     def to_dict(self):

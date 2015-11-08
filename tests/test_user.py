@@ -12,7 +12,7 @@ class UserTest(unittest.TestCase):
     def test_create(self):
         user = User.create(username="test", password="password", email="test@localhost.local", quick=True)
 
-        assert user.username == "test"
+        assert user.name == "test"
         assert user.email == 'test@localhost.local'
         assert user.administrator == False
         assert user.active == True

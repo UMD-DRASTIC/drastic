@@ -57,7 +57,7 @@ def user_list(cfg):
     """Print user list"""
     from indigo.models import User
     for user in User.objects.all():
-        print "Username: {}, ID: {}".format(user.username, user.id)
+        print "Username: {}, ID: {}".format(user.name, user.id)
 
 
 # noinspection PyUnusedLocal
@@ -71,7 +71,7 @@ def user_add(cfg, username=None):
     else:
         username = username[0]
 
-    user = User.objects.filter(username=username).first()
+    user = User.objects.filter(name=username).first()
     if user:
         print "ERROR: Username {} is already in use".format(username)
         sys.exit(1)
@@ -80,7 +80,7 @@ def user_add(cfg, username=None):
 
     email = raw_input("Please enter the user's email address: ")
     password = getpass("Please enter the user's password: ")
-    User.create(username=username,
+    User.create(name=username,
                 password=password,
                 email=email,
                 administrator=(admin.lower() == 'y'))
@@ -136,7 +136,7 @@ def group_add_user(cfg, args):
         user.groups.append(group.id)
         user.update(groups=user.groups)
 
-    print "Added {} to {}".format(user.username, group.name)
+    print "Added {} to {}".format(user.name, group.name)
 
 
 # noinspection PyUnusedLocal
@@ -147,7 +147,7 @@ def group_list(cfg):
         print "Name: {}, ID: {}".format(group.name, group.id)
         for user in group.get_users():
             print ".ID: {}\tUsername: {}\tAdministrator:{}\tOwner: {}".format(
-                user.id, user.username, ("N", "Y")[user.administrator],
+                user.id, user.name, ("N", "Y")[user.administrator],
                 ("N", "Y")[user.id == group.owner])
 
 

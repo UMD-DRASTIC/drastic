@@ -28,7 +28,8 @@ from indigo.util import default_uuid
 class User(Model):
     """User Model"""
     id = columns.Text(primary_key=True, default=default_uuid)
-    username = columns.Text(required=True, index=True)
+    username = columns.Text(required=True)
+    name = columns.Text(required=True, index=True)
     email = columns.Text(required=True)
     password = columns.Text(required=True)
     administrator = columns.Boolean(required=True, default=False)
@@ -52,8 +53,8 @@ class User(Model):
         kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                    rounds=rounds,
                                                    salt_size=size)
-        if cls.objects.filter(username=kwargs['username']).count():
-            raise UserConflictError(kwargs['username'])
+        if cls.objects.filter(name=kwargs['name']).count():
+            raise UserConflictError(kwargs['name'])
 
         # The following does not return a new instance of User, and I have
         # singularly failed to find out why, as it works elsewhere.
@@ -63,9 +64,9 @@ class User(Model):
         return user
 
     @classmethod
-    def find(cls, username):
-        """Find a user from his username"""
-        return cls.objects.filter(username=username).first()
+    def find(cls, name):
+        """Find a user from his name"""
+        return cls.objects.filter(name=name).first()
 
     @classmethod
     def find_by_id(cls, idstring):
@@ -73,7 +74,7 @@ class User(Model):
         return cls.objects.filter(id=idstring).first()
 
     def __unicode__(self):
-        return unicode(self.username)
+        return unicode(self.name)
 
     def authenticate(self, password):
         """Verify if the user is authenticated"""
@@ -81,7 +82,7 @@ class User(Model):
 
     def get_full_name(self):
         """Return user full name"""
-        return self.username
+        return self.name
 
     def is_active(self):
         """Check if the user is active"""
@@ -101,7 +102,7 @@ class User(Model):
         """Return a dictionary which describes a resource for the web ui"""
         return {
             'id': self.id,
-            'username': self.username,
+            'name': self.name,
             'email': self.email,
             'administrator': self.administrator,
             'active': self.active,
