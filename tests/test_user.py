@@ -33,7 +33,7 @@ class UserTest(unittest.TestCase):
     def test_group_membership(self):
         user = User.create(username="test_group", password="password", email="test@localhost.local", groups=[], quick=True)
         assert user
-        group = Group.create(name="test_group_1", owner=user.id)
+        group = Group.create(name="test_group_1")
         user.update(groups=[group.id])
 
         # Refetch the user

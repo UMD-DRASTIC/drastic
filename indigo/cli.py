@@ -99,7 +99,7 @@ def group_add(cfg, args):
     name, username = args
     user = User.find(username)
     try:
-        group = Group.create(name=name, owner=user.id)
+        group = Group.create(name=name)
     except GroupConflictError:
         print "A group with that name already exists"
         return
@@ -146,9 +146,8 @@ def group_list(cfg):
     for group in Group.objects.all():
         print "Name: {}, ID: {}".format(group.name, group.id)
         for user in group.get_users():
-            print ".ID: {}\tUsername: {}\tAdministrator:{}\tOwner: {}".format(
-                user.id, user.name, ("N", "Y")[user.administrator],
-                ("N", "Y")[user.id == group.owner])
+            print ".ID: {}\tUsername: {}\tAdministrator:{}".format(
+                user.id, user.name, ("N", "Y")[user.administrator])
 
 
 def main():

@@ -33,7 +33,7 @@ class Group(Model):
     """Group Model"""
     id = columns.Text(primary_key=True, default=default_uuid)
     name = columns.Text(required=True, index=True)
-    owner = columns.Text(required=True)
+#     owner = columns.Text(required=True)
 
     @classmethod
     def create(cls, **kwargs):

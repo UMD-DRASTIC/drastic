@@ -41,7 +41,7 @@ class NodeTest(unittest.TestCase):
     def test_perms_for_collection(self):
         User.create(username="test_coll", password="password", email="test@localhost.local", groups=[], quick=True)
         user = User.find("test_coll")
-        group = Group.create(name="test_group_coll", owner=user.id)
+        group = Group.create(name="test_group_coll")
         user.update(groups=[group.id])
 
         root = Collection.find("test_root")
@@ -55,7 +55,7 @@ class NodeTest(unittest.TestCase):
         user = User.find("test_coll2")
 
         root = Collection.find("test_root")
-        group = Group.create(name="test_group_coll2", owner=user.id)
+        group = Group.create(name="test_group_coll2")
         coll = Collection.create(name="perm_check2", parent=str(root.id), read_access=[group.id])
 
         # User can read collection coll if user is in a group also in coll's read_access

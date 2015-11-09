@@ -40,7 +40,7 @@ class SearchTest(unittest.TestCase):
         assert owning_user
         assert reading_user
 
-        group = Group.create(name="protected_group", owner=owning_user.id)
+        group = Group.create(name="protected_group")
         Collection.create(name="protected", parent=coll.id, read_access=[group.id] )
 
         c = Collection.find("protected")

@@ -39,7 +39,7 @@ class ResourceTest(unittest.TestCase):
     def test_permission_ok(self):
         coll = Collection.get_root_collection()
         user = User.create(username="test_res_user", password="password", email="test@localhost.local", groups=[], quick=True)
-        group = Group.create(name="test_group_resourdce", owner=user.id)
+        group = Group.create(name="test_group_resourdce")
         user.update(groups=[group.id])
 
         resource = Resource.create(name='new_test_resource', container=coll.id, read_access=[group.id])
