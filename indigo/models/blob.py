@@ -26,7 +26,7 @@ from indigo.util import default_uuid
 class Blob(Model):
     """Blob Model"""
     id = columns.Text(primary_key=True, default=default_uuid)
-    parts = columns.List(columns.Text, default=[], index=True)
+    parts = columns.List(columns.Text, default=[])
     size = columns.Integer(default=0)
     hash = columns.Text(default="")
 
@@ -64,7 +64,7 @@ class BlobPart(Model):
     id = columns.Text(primary_key=True, default=default_uuid)
     content = columns.Bytes()
     compressed = columns.Boolean(default=False)
-    blob_id = columns.Text(index=True)
+    blob_id = columns.Text()
 
     @classmethod
     def find(cls, id_):
