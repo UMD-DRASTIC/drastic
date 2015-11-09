@@ -32,7 +32,7 @@ class IDIndex(Model):
     - key: a string we can send to the object class as a primary key
     """
     id = columns.Text(primary_key=True, default=default_uuid)
-    classname = columns.Text(required=True, index=True)
+    classname = columns.Text(required=True)
     key = columns.Text(required=True)
     
     @classmethod
