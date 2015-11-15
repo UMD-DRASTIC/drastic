@@ -324,7 +324,7 @@ class Resource(Model):
         acl = "{{{}}}".format(", ".join(ls_access))
         query= ("UPDATE {}.resource SET acl = acl + {}"
                 "WHERE container='{}' AND name='{}'").format(
-            kespace,
+            keyspace,
             acl,
             self.container,
             self.name)
