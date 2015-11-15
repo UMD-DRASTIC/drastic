@@ -18,15 +18,27 @@ limitations under the License.
 from datetime import datetime
 import json
 import logging
-from cassandra.cqlengine import columns
+from cassandra.cqlengine import (
+    columns,
+    connection
+)
 from cassandra.cqlengine.models import Model
 from paho.mqtt import publish
 
+from indigo import get_config
 from indigo.models.errors import (
     NoSuchCollectionError,
     ResourceConflictError
 )
-from indigo.acl import serialize_acl_metadata
+from indigo.models.group import Group
+from indigo.models.acl import (
+    Ace,
+    acemask_to_str,
+    cdmi_str_to_aceflag,
+    str_to_acemask,
+    cdmi_str_to_acemask,
+    serialize_acl_metadata
+)
 from indigo.util import (
     decode_meta,
     default_cdmi_id,
@@ -55,15 +67,16 @@ class Resource(Model):
     create_ts = columns.DateTime()
     modified_ts = columns.DateTime()
     type = columns.Text(required=False, default='UNKNOWN')
+    acl = columns.Map(columns.Text, columns.UserDefinedType(Ace))
 
     # The access columns contain lists of group IDs that are allowed
     # the specified permission. If the lists have at least one entry
     # then access is restricted, if there are no entries in a particular
     # list, then access is granted to all (authenticated users)
-    read_access = columns.List(columns.Text)
-    edit_access = columns.List(columns.Text)
-    write_access = columns.List(columns.Text)
-    delete_access = columns.List(columns.Text)
+#     read_access = columns.List(columns.Text)
+#     edit_access = columns.List(columns.Text)
+#     write_access = columns.List(columns.Text)
+#     delete_access = columns.List(columns.Text)
 
     logger = logging.getLogger('database')
 
@@ -198,6 +211,25 @@ class Resource(Model):
         """Return the full path of the resource"""
         return merge(self.container, self.name)
 
+    def read_acl(self):
+        """Return two list of groups id which have read and write access"""
+        read_access = []
+        write_access = []
+        for gid, ace in self.acl.items():
+            op = acemask_to_str(ace.acemask, True)
+            if op == "read":
+                read_access.append(gid)
+            elif op == "write":
+                write_access.append(gid)
+            elif op == "read/write":
+                read_access.append(gid)
+                write_access.append(gid)
+            else:
+                # Unknown combination
+                pass
+            
+        return read_access, write_access
+
     def to_dict(self, user=None):
         """Return a dictionary which describes a resource for the web ui"""
         data = {
@@ -238,7 +270,126 @@ class Resource(Model):
         else:
             self.mqtt_publish('update_metadata', pre_state, post_state)
 
+        # TODO: If we update the url we need to delete the blob
+
         return self
+
+    def create_acl(self, read_access, write_access):
+        self.acl = {}
+        self.save()
+        self.update_acl(read_access, write_access)
+
+    def update_acl(self, read_access, write_access):
+        """Replace the acl with the given list of access.
+
+        read_access: a list of groups id that have read access for this
+                     collection
+        write_access: a list of groups id that have write access for this
+                     collection
+
+        """
+        cfg = get_config(None)
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        # The ACL we construct will replace the existing one
+        # The dictionary keys are the groups id for which we have an ACE
+        # We don't use aceflags yet, everything will be inherited by lower
+        # sub-collections
+        # acemask is set with helper (read/write - see indigo/models/acl/py)
+        access = {}
+        for gid in read_access:
+            access[gid] = "read"
+        for gid in write_access:
+            if gid in access:
+                access[gid] = "read/write"
+            else:
+                access[gid] = "write"
+        
+        ls_access = []
+        for gid in access:
+            g = Group.find_by_id(gid)
+            if g:
+                ident = g.name
+            elif gid.upper() == "AUTHENTICATED@":
+                ident = "AUTHENTICATED@"
+            else:
+                # TODO log or return error if the identifier isn't found ?
+                continue
+            s = ("'{}': {{"
+                 "acetype: 'ALLOW', "
+                 "identifier: '{}', "
+                 "aceflags: {}, "
+                 "acemask: {}"
+                 "}}").format(gid, ident, 0, str_to_acemask(access[gid], True))
+            ls_access.append(s)
+        acl = "{{{}}}".format(", ".join(ls_access))
+        query= ("UPDATE {}.resource SET acl = acl + {}"
+                "WHERE container='{}' AND name='{}'").format(
+            kespace,
+            acl,
+            self.container,
+            self.name)
+        connection.execute(query)
+
+    def update_cdmi_acl(self, cdmi_acl):
+        """Update acl with the metadata acl passed with a CDMI request"""
+        cfg = get_config(None)
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        ls_access = []
+        for cdmi_ace in cdmi_acl:
+            g = Group.find(cdmi_ace['identifier'])
+            if g:
+                ident = g.name
+            elif gid.upper() == "AUTHENTICATED@":
+                ident = "AUTHENTICATED@"
+            else:
+                # TODO log or return error if the identifier isn't found ?
+                continue
+            s = ("'{}': {{"
+                 "acetype: '{}', "
+                 "identifier: '{}', "
+                 "aceflags: {}, "
+                 "acemask: {}"
+                 "}}").format(g.id,
+                              cdmi_ace['acetype'].upper(),
+                              ident,
+                              cdmi_str_to_aceflag(cdmi_ace['aceflags']),
+                              cdmi_str_to_acemask(cdmi_ace['acemask'], True)
+                             )
+            ls_access.append(s)
+        acl = "{{{}}}".format(", ".join(ls_access))
+        query= ("UPDATE {}.resource SET acl = acl + {}"
+                "WHERE container='{}' AND name='{}'").format(
+            keyspace,
+            acl,
+            self.container,
+            self.name)
+        connection.execute(query)
+
+    def get_authorized_actions(self, user):
+        """"Get available actions for user according to a group"""
+        # Check permission on the parent container if there's no action
+        # defined at this level
+        if not self.acl:
+            from indigo.models import Collection
+            parent_container = Collection.find(self.container)
+            return parent_container.get_authorized_actions(user)
+        actions = set([])
+        for gid in user.groups:
+            if gid in self.acl:
+                ace = self.acl[gid]
+                level = acemask_to_str(ace.acemask, True)
+                if level == "read":
+                    actions.add("read")
+                elif level == "write":
+                    actions.add("write")
+                    actions.add("delete")
+                    actions.add("edit")
+                elif level == "read/write":
+                    actions.add("read")
+                    actions.add("write")
+                    actions.add("delete")
+                    actions.add("edit")
+        return actions
 
     def user_can(self, user, action):
         """
@@ -246,17 +397,9 @@ class Resource(Model):
         appear in this list for 'action'_access in this object.
         """
         if user.administrator:
+            # An administrator can do anything
             return True
-
-        l = getattr(self, '{}_access'.format(action))
-        if len(l) and not len(user.groups):
-            # Group access required, user not in any groups
-            return False
-        if not len(l):
-            # Group access not required
+        actions = self.get_authorized_actions(user)
+        if action in actions:
             return True
-
-        # if groups has less than user.groups then it has had a group
-        # removed, it confirms presence in l
-        groups = set(user.groups) - set(l)
-        return len(groups) < len(user.groups)
+        return False

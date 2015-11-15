@@ -34,6 +34,7 @@ from indigo.models.resource import Resource
 from indigo.models.blob import Blob, BlobPart
 from indigo.models.activity import Activity
 from indigo.models.id_index import IDIndex
+from indigo.models.acl import Ace
 
 from indigo.log import init_log
 

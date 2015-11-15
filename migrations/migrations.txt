@@ -26,5 +26,25 @@ $ python migrations/user_username_to_name.py
 
 > DROP INDEX index_idindex_classname;
 
+* Remove permission columns in Collection and Resource
+
+> ALTER TABLE collection DROP read_access;
+> ALTER TABLE collection DROP edit_access;
+> ALTER TABLE collection DROP write_access;
+> ALTER TABLE collection DROP delete_access;
+> ALTER TABLE resource DROP read_access;
+> ALTER TABLE resource DROP edit_access;
+> ALTER TABLE resource DROP write_access;
+> ALTER TABLE resource DROP delete_access;
+
+
+* Use the interpreter to modify root collection
+
+from indigo.models import initialise
+initialise("indigo")
+from indigo.models import Collection
+root = Collection.get_root_collection()
+root.update_acl(["AUTHENTICATED@"], [])
+
 
 
