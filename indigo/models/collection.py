@@ -356,7 +356,6 @@ class Collection(Model):
                 access[gid] = "read/write"
             else:
                 access[gid] = "write"
-        print access
         ls_access = []
         for gid in access:
             g = Group.find_by_id(gid)
@@ -374,7 +373,6 @@ class Collection(Model):
                  "acemask: {}"
                  "}}").format(gid, ident, 0, str_to_acemask(access[gid], False))
             ls_access.append(s)
-        print ls_access
         acl = "{{{}}}".format(", ".join(ls_access))
         query= ("UPDATE {}.collection SET acl = acl + {}"
                 "WHERE container='{}' AND name='{}'").format(
