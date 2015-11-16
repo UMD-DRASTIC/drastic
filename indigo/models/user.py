@@ -28,7 +28,7 @@ from indigo.util import default_uuid
 class User(Model):
     """User Model"""
     id = columns.Text(primary_key=True, default=default_uuid)
-#     username = columns.Text(required=True)
+    username = columns.Text(required=True)
     name = columns.Text(required=True, index=True)
     email = columns.Text(required=True)
     password = columns.Text(required=True)
