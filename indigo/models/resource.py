@@ -64,6 +64,7 @@ class Resource(Model):
     metadata = columns.Map(columns.Text, columns.Text, index=True)
     mimetype = columns.Text(required=False)
     url = columns.Text(required=False)
+    alt_url = columns.Set(columns.Text, required=False)
     create_ts = columns.DateTime()
     modified_ts = columns.DateTime()
     type = columns.Text(required=False, default='UNKNOWN')
