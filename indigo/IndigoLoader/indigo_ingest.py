@@ -17,10 +17,8 @@ limitations under the License.
 """
 import os
 import re
-import socket
 import sys
 import time
-from collections import OrderedDict
 
 import configparser
 import docopt
@@ -29,10 +27,6 @@ import FileNameSource
 import writer
 from FileNameSource import CreateFileNameSource
 from indigo.models import initialise
-from indigo.models.collection import Collection
-from indigo.models.errors import (
-    NoSuchCollectionError
-)
 
 
 # noinspection PyUnusedLocal
@@ -44,7 +38,7 @@ from indigo.models.errors import (
 
 def prepare(args, cfg):
     """
-    prepare  [ --prefix=PREFIX --dataset=DATASET_NAME] --mode=MODE    (<source_directory>|-)
+    prepare  [ --prefix=PREFIX --dataset=DATASET_NAME] {mode}    (<source_directory>|-)
     :param args:
     :return:
     """
@@ -83,8 +77,12 @@ def inject(args, cfg):
         loader = writer.load  # default is to load.
 
     for path in files:
-        c = loader.put(path, args, cfg)
-        files.confirm_completion(path)
+        update = 'DONE'
+        try:
+            c = loader.put(path)
+        except Exception as e :
+            update = 'FAILED'            # do NOT confirm
+        files.confirm_completion(path,update)
 
 
 ############### Utility Routines ##################
@@ -114,75 +112,112 @@ def decode_str(s):
 
 
 ############### Utility Routines ##################
-def main():
-    args_doc = u'''
-Ingest data files into Indigo from a directory tree
+
+args_doc = \
+u'''Ingest data files into Indigo from a directory tree
 
 Usage:
-    ingest inject   [ (--link|--copy) --prefix=PREFIX --local-ip=LOCAL_IP --dataset=DATASET_NAME --mode=MODE --config=CONFIG ] (<source_directory>|-)
-    ingest prepare  [ --prefix=PREFIX --dataset=DATASET_NAME  --config=CONFIG] --mode=MODE    (<source_directory>|-)
-    ingest validate [ --prefix=PREFIX --dataset=DATASET_NAME  --config=CONFIG ]   [<source_directory>]
-    ingest summary  [ --dataset=DATASET_NAME  --config=CONFIG]
+     ingest prepare  [--config=CONFIG] (--walk|--read) [--dataset=DATASET_NAME (--postgres|--sqlite)]  (<source_directory>|-)
+     ingest inject   [--config=CONFIG] (--copy|--link) [--dataset=DATASET_NAME --prefix=PREFIX --localip=LOCAL_IP] (--walk|--read) (<source_directory>|-)
+     ingest inject   [--config=CONFIG] (--copy|--link) [--dataset=DATASET_NAME --prefix=PREFIX --localip=LOCAL_IP] (--postgres|--sqlite)
+     ingest validate [--config=CONFIG] [--config=CONFIG] (--dataset=DATASET_NAME|<source_directory>)
+     ingest summary  [--config=CONFIG] [--dataset=DATASET_NAME --config=CONFIG]   [(--postgres|--sqlite)]
+
 
 Arguments:
-    inject    – actually move the data into the repository, either by linking or copying
-    prepare   – harvest the file names for later injections
-    validate  – check that every file name marked as ingested is present in the repository
-    summary   – list the counts of all the states
+     inject    – actually move the data into the repository, either by linking or copying
+     prepare   – harvest the file names for later injections',
+     validate  – check that every file name marked as ingested is present in the repository
+     summary   – list the counts of all the states
 
 Options:
-    --prefix=PREFIX         specify the directory that is the root of the local vault [ default: /data ]
-    --localip=LOCAL_IP      specify the local ip address to use when linking [ default: '{ip}' ]
-    --copy                  copy the data into Indigo  -- one of copy or link must be specified...
-    --link                  link to the file
-    --dataset=DATASET_NAME  a name for the prepared data [ default: resource ]
-    --mode=MODE             one of walk,read or db — where to get list of files from.  Must be specified as walk or read for prepare [ default:db ]
-    --config=CONFIG         location of config file [ default : ~/.indigo-ingest.cfg ]
-'''
+    --config=CONFIG          # location of config file [ default : ~/.indigo-ingest.cfg ]
+    --prefix=PREFIX          # specify the directory that is the root of the local vault [ default: /data ]
+    --dataset=DATASET_NAME   # a name for the prepared data [ default: resource ]
+    --localip=LOCAL_IP       # specify the ip address to use when linking, i.e. where the files will actually reside [ default: 127.0.0.1 ]
+    --copy                   # copy the data into Indigo  -- one of copy or link must be specified...
+    --link                   # link to the file from Indigo, i.e. reference, not copy.
+    --walk                   # walk the source tree to get the list of files
+    --read                   # read the list of filenames from a file or stdin
+    --postgres               # read file names from or store filenames to a postgres database
+    --sqlite                 # read file names from or store filenames to a postgres database
 
+'''
+help_text='''
+The basic workflow provided by this utility is to acquire a list of file names and inject
+them into the Indigo store.
+
+The list of file names can be stored into a persistent work queue in a postgres or sqlite3
+database (using the prepare phase).  It is strongly recommended that this phase be used for anything
+greater than a few hundred files, since it provides the option to restart, to have multiple injections
+running in parallel, and to be able to track status, performance and failed injections.  The use of the
+––dataset option allows you to name the work queue, which may be useful — the default is 'resource'
+
+
+The injection phase can draw from a list of file names in a file, from a walk of the live directory, or from
+a database work queue created in the prepare phase.  In the latter case, multiple injections can proceed
+in parallel, which will typically improve performance linearly with the number of parallel processes.
+
+The config file allows you to set up the credentials and locations of resources, and consists of 2 sections
+e.g.
+
+[cassandra]
+CASSANDRA_HOSTS = 192.168.56.101, 192.168.56.102
+
+[postgres]
+username = indigo
+password = indigo
+database = indigo
+host = 192.168.56.101
+
+N.B. It typically only makes sense to link to files that are logically or physically  "on" an indigo node, since access
+to them will go via the indigo server.  i.e. this is a local file access.
+
+Remote file access is not yet supported. Moreover, for copy and link ( not send ) , the injection bypasses normal
+indigo access control, and so typically can only work on an indigo server.  Send can work from anywhere, and supports
+embedded files, but not linked.
+
+'''
+# docopt is definitely broken ... so clean up string a little.
+args_doc_tidied = args_doc.split('\n')
+args_doc_tidied = u'\n'.join([ k.split('#')[0]  for k in args_doc_tidied])
+
+def main():
     __doc__ = args_doc
     cfg = load_config()
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    #### Try and determine local ip address...
-    k_ip = cfg.get('cassandra','CASSANDRA_HOSTS')
-    if k_ip : k_ip = re.split(r'[^\w\.]+',k_ip)
-    else: k_ip = [ ]
-    for k in k_ip:
-        try:
-                s.connect((k, 7000))  # assuming that indigo will use port 7000 to connect to other nodes
-                ip = s.getsockname()[0]
-                if not ip.startswith('127.'): break
-        except:
-                continue
-    if not ip: ip = '127.0.0.1'
-    s.close()
     ############################ might work
-    my_arg_doc = args_doc.format(ip=ip)
-    #####
+    args = sys.argv[1:]
+    ##### Test fragment ... remove
+    ## TODO: remove test fragment
     if len(sys.argv) < 3:
-        args = 'prepare --mode=walk --prefix=/Users/johnburns/PycharmProjects /Users/johnburns/PycharmProjects'.split()
-    else:
-        args = sys.argv[1:]
-    args = docopt.docopt(my_arg_doc, args)
+        args = 'inject --copy --postgres --prefix=/Users/johnburns/PycharmProjects --dataset=resource'.strip().split()
+    ### End Remove
+
+
+    try : args = docopt.docopt(args_doc_tidied, args)
+    except docopt.DocoptExit as e :
+        print args_doc.encode('utf-8'),help_text.encode('utf-8')
+        raise
+    except docopt.DocoptLanguageError as e :
+        print e
+        raise
     if args['prepare']:   return prepare(args, cfg)
     if args['summary']:
         raise NotImplementedError
         summary(args, cfg)
     else:
         try:
-            cassandra_ip = ipcfg.get('cassandra', 'CASSANDRA_HOSTS')
-            if cassandra_ip: cassandra_ip = cassandra_ip.split()
+            cassandra_ip = cfg.get('cassandra', 'CASSANDRA_HOSTS')
+            if cassandra_ip: cassandra_ip = re.split(r'[^\w\.]+',cassandra_ip  )
         except:
             cassandra_ip = ['127.0.0.1']
-        cassandra_ip += ip
 
         initialise(keyspace='indigo', hosts=cassandra_ip)
         if args['inject']: return inject(args, cfg)
         if args['validate']:
             raise NotImplementedError
             return validate(args, cfg)
-        print 'Unknown subcommand ', sys.argv
+        print >>sys.stderr, my_arg_doc, "\n Unknown subcommand \n", sys.argv
         return None
 
 

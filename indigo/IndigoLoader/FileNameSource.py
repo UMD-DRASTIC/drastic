@@ -89,6 +89,7 @@ class DB:
 
         table = args.get('--dataset', 'resource')
         if not table: table = 'resource'
+
         self.tablename = table
 
         ### Do JIT set up of other queries....
@@ -160,16 +161,17 @@ class DBQuery(FileNameSource, DB):
         self.prefix = (args['--prefix'])
         self.offset = len(self.prefix)
         self.fetch_cs = self.cnx.cursor()
-        self.fetch_cs.execute('''PREPARE F1 (integer) AS 'SELECT path FROM "{0}" where status = 'READY' LIMIT $1 ''')
+        cmd = '''PREPARE F1 (integer) AS SELECT path FROM "{0}" where status = 'READY' LIMIT $1 '''.format(self.tablename)
+        self.fetch_cs.execute(cmd)
         self.fetch_cs.execute('EXECUTE F1 (1000)')
         # And prepare the update status cmd
-        ucmd = '''PREPARE M1 (TEXT,resource_status) AS UPDATE "{0}" SET status='DONE' WHERE path = $1 and status <> 'DONE' '''.format(
+        ucmd = '''PREPARE M1 (TEXT,resource_status) AS UPDATE "{0}" SET status='DONE' WHERE path = $1 and status <> $2 '''.format(
             self.tablename)
         self.cs1.execute(ucmd)
 
-    def confirm_completion(self, path):
+    def confirm_completion(self, path, status = 'DONE'):
         try:
-            self.cs1.execute('EXECUTE M1(%s)', [path])
+            self.cs1.execute('EXECUTE M1(%s,%2)', [path,status])
             updates = self.cs1.rowcount
             return True
         except Exception as e:
@@ -202,15 +204,18 @@ def CreateFileNameSource(args, cfg):
     :return: iterator
     """
     src = args['<source_directory>']
-    mode = args['--mode']
-    if mode not in ('walk', 'read', 'db'):
-        print "mode must be one  'walk','read','db'  "
-        sys.exit(1)
+    mode = [ k[2:] for k in ['--walk','--read','--postgres','--sqlite'] if args[k] ]
+    if len(mode) > 1: raise NotImplementedError
+    mode = mode[0]
+
     prefix = args['--prefix']
     if not prefix:
         prefix = '/data'
     else:
         prefix = prefix.rstrip('/')
+    if mode == 'postgres':    return DBQuery(args, cfg)
+
+
     if not src.startswith(prefix):
         print src, ' must be a subdirectory of the host data directory (--prefix=', prefix, ')'
         print 'If you did not specify it, please do so'
@@ -219,7 +224,8 @@ def CreateFileNameSource(args, cfg):
     ## Set up a source that gets list of files from a file
     if mode == 'read':  return FileList(args, cfg)
     if mode == 'walk':  return DirectoryWalk(args, cfg)
-    if mode == 'db':    return DBQuery(args, cfg)
+    if mode == 'sqlite3' :
+        raise NotImplementedError
 
 
 def decode_str(s):
