@@ -65,6 +65,15 @@ class Group(Model):
     def __unicode__(self):
         return unicode(self.name)
 
+    def delete(self):
+        # Slow and ugly,
+        from indigo.models import User
+        for u in User.objects.all():
+            if self.id in u.groups:
+                u.groups.remove(self.id)
+                u.save()
+        super(Group, self).delete()
+
     def get_users(self):
         """Get users of the group"""
         # Slow and ugly, not sure I like having to iterate
