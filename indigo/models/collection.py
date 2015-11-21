@@ -26,8 +26,9 @@ import paho.mqtt.publish as publish
 import logging
 
 from indigo import get_config
-from indigo.models.resource import Resource
 from indigo.models.group import Group
+from indigo.models.resource import Resource
+from indigo.models.search import SearchIndex
 from indigo.models.acl import (
     Ace,
     acemask_to_str,
@@ -112,15 +113,16 @@ class Collection(Model):
         if collection is not None:
             raise CollectionConflictError(container)
 
-        res = super(Collection, cls).create(**kwargs)
-        state = res.mqtt_get_state()
-        res.mqtt_publish('create', {}, state)
-        
+        collection = super(Collection, cls).create(**kwargs)
+        state = collection.mqtt_get_state()
+        collection.mqtt_publish('create', {}, state)
+        # Index the collection
+        SearchIndex.index(collection, ['name', 'metadata'])
         # Create a row in the ID index table
-        idx = IDIndex.create(id=res.id,
+        idx = IDIndex.create(id=collection.id,
                              classname="indigo.models.collection.Collection",
-                             key=res.path())
-        return res
+                             key=collection.path())
+        return collection
 
     @classmethod
     def create_root(cls):
@@ -173,6 +175,7 @@ class Collection(Model):
         idx = IDIndex.find(self.id)
         if idx:
             idx.delete()
+        SearchIndex.reset(self.id)
         super(Collection, self).delete()
 
     @classmethod
@@ -325,8 +328,11 @@ class Collection(Model):
             self.mqtt_publish('update_object', pre_state, post_state)
         else:
             self.mqtt_publish('update_metadata', pre_state, post_state)
-
+        SearchIndex.reset(self.id)
+        SearchIndex.index(self, ['name', 'metadata'])
         return self
+
+
     def create_acl(self, read_access, write_access):
         self.acl = {}
 

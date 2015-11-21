@@ -50,9 +50,15 @@ from indigo.util import (
     datetime_serializer
 )
 from indigo.models.id_index import IDIndex
+from indigo.models.search import SearchIndex
 
 import indigo.drivers
 
+
+def notify_agent(resource_id, event=""):
+    from nodes.client import choose_client
+    client = choose_client()
+    client.notify(resource_id, event)
 
 class Resource(Model):
     """Resource Model"""
@@ -112,17 +118,17 @@ class Resource(Model):
             raise ResourceConflictError(merge(kwargs['container'],
                                               kwargs['name']))
 
-        res = super(Resource, cls).create(**kwargs)
-
-        state = res.mqtt_get_state()
-        res.mqtt_publish('create', {}, state)
-        
+        resource = super(Resource, cls).create(**kwargs)
+        state = resource.mqtt_get_state()
+        resource.mqtt_publish('create', {}, state)
+        notify_agent(resource.path(), "resource:new")
+        SearchIndex.index(resource, ['name', 'metadata'])
         # Create a row in the ID index table
-        idx = IDIndex.create(id=res.id,
+        idx = IDIndex.create(id=resource.id,
                              classname="indigo.models.resource.Resource",
-                             key=res.path())
+                             key=resource.path())
 
-        return res
+        return resource
 
     def mqtt_get_state(self):
         payload = dict()
@@ -157,6 +163,8 @@ class Resource(Model):
         idx = IDIndex.find(self.id)
         if idx:
             idx.delete()
+        SearchIndex.reset(self.id)
+        notify_agent(self.path(), "resource:delete")
         super(Resource, self).delete()
 
     @classmethod
@@ -270,6 +278,10 @@ class Resource(Model):
             self.mqtt_publish('update_object', pre_state, post_state)
         else:
             self.mqtt_publish('update_metadata', pre_state, post_state)
+        
+        notify_agent(self.path(), "resource:edit")
+        SearchIndex.reset(self.path())
+        SearchIndex.index(self, ['name', 'metadata'])
 
         # TODO: If we update the url we need to delete the blob
 
