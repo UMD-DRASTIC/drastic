@@ -384,8 +384,8 @@ class Collection(Model):
                 "WHERE container='{}' AND name='{}'").format(
             keyspace,
             acl,
-            self.container,
-            self.name)
+            self.container.replace("'", "\''"),
+            self.name.replace("'", "\''"))
         connection.execute(query)
 
     def update_cdmi_acl(self, cdmi_acl):
@@ -419,8 +419,8 @@ class Collection(Model):
                 "WHERE container='{}' AND name='{}'").format(
             keyspace,
             acl,
-            self.container,
-            self.name)
+            self.container.replace("'", "\'"),
+            self.name.replace("'", "\'"))
         connection.execute(query)
 
     def get_authorized_actions(self, user):
