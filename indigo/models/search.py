@@ -26,6 +26,7 @@ limitations under the License.
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
+import logging
 
 from indigo.util import default_uuid
 
@@ -76,7 +77,14 @@ class SearchIndex(Model):
 
         results = []
         for result in result_objects:
-            results.append(get_object(result, user))
+            try:
+                results.append(get_object(result, user))
+            except AttributeError:
+                logging.warning(u"Problem with SearchIndex('{}','{}','{}','{}')".format(
+                                result.id,
+                                result.term,
+                                result.object_type,
+                                result.object_id))
         #results = filter(lambda x: x, results)
         results = [x for x in results if x]
 
