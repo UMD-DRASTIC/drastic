@@ -57,8 +57,8 @@ from indigo.models.id_index import IDIndex
 
 class Collection(Model):
     """Collection model"""
-    id = columns.Text(default=default_cdmi_id)
-    container = columns.Text(primary_key=True, required=False)
+    id = columns.Text(default=default_cdmi_id, required=True)
+    container = columns.Text(primary_key=True, required=True)
     name = columns.Text(primary_key=True, required=True)
     metadata = columns.Map(columns.Text, columns.Text, index=True)
     create_ts = columns.DateTime()
@@ -117,7 +117,7 @@ class Collection(Model):
         state = collection.mqtt_get_state()
         collection.mqtt_publish('create', {}, state)
         # Index the collection
-        SearchIndex.index(collection, ['name', 'metadata'])
+        collection.index()
         # Create a row in the ID index table
         idx = IDIndex.create(id=collection.id,
                              classname="indigo.models.collection.Collection",
@@ -230,6 +230,10 @@ class Collection(Model):
         """Return the root collection"""
         return cls.objects.filter(container='null',name='Home').first()
 
+    def index(self):
+        SearchIndex.reset(self.id)
+        SearchIndex.index(self, ['name', 'metadata'])
+
     def __unicode__(self):
         return self.path()
 
@@ -316,6 +320,7 @@ class Collection(Model):
         """Update a collection"""
         pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
+        pre_id = self.id
 
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
@@ -324,12 +329,21 @@ class Collection(Model):
 
         post_state = self.mqtt_get_state()
 
+        # Update id
+        if 'id' in kwargs:
+            if pre_id:
+                idx = IDIndex.find(pre_id)
+                if idx:
+                    idx.delete()
+            idx = IDIndex.create(id=self.id,
+                                 classname="indigo.models.collection.Collection",
+                                 key=self.path())
+        self.index()
+
         if pre_state['metadata'] == post_state['metadata']:
             self.mqtt_publish('update_object', pre_state, post_state)
         else:
             self.mqtt_publish('update_metadata', pre_state, post_state)
-        SearchIndex.reset(self.id)
-        SearchIndex.index(self, ['name', 'metadata'])
         return self
 
 

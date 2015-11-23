@@ -55,15 +55,6 @@ Creates/Syncs the database defined in configuration with the latest models.
 indigo create
 ```
 
-		
-### Reset the database 
-
-Deletes the entire database (defined in config), and is irreversible.  Should only be used during development.
-
-```
-indigo zap 
-```
-
 ### Create a user 
 
 Provides a guided interface to create a new user. You will be asked if this is an administrative user, their password and their email address.  

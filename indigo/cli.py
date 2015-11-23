@@ -22,6 +22,7 @@ from indigo import get_config
 from indigo.models.errors import GroupConflictError
 from indigo.models import initialise, sync, destroy
 from indigo.ingest import do_ingest
+from indigo.index import do_index
 
 
 def parse_arguments():
@@ -176,3 +177,5 @@ def main():
         group_delete(cfg, args.command[1:])
     elif command == 'ingest':
         do_ingest(cfg, args)
+    elif command == 'index':
+        do_index(cfg, args)

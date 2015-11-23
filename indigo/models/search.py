@@ -35,6 +35,7 @@ class SearchIndex(Model):
     """SearchIndex Model"""
     id = columns.Text(primary_key=True, default=default_uuid)
     term = columns.Text(required=True, index=True)
+    term_type = columns.Text(required=True)
     object_type = columns.Text(required=True)
     object_id = columns.Text(required=True, index=True)
 
@@ -130,28 +131,44 @@ class SearchIndex(Model):
             """Clean a term"""
             return t.lower().replace('.', ' ').replace('_', ' ').split(' ')
 
+        def clean_full(t):
+            """Clean a term but keep all chars"""
+            return t.lower()
+
         terms = []
+        if 'metadata' in fields:
+            metadata = object.get_metadata()
+            # Metadata are stored as json string, get_metadata() returns it as
+            # a Python dictionary
+            for k, v in metadata.iteritems():
+                # A value can be a string or a list of string
+                if isinstance(v, list):
+                    for vv in v:
+                        terms.extend([('metadata', el) for el in clean(vv.strip())])
+                else:
+                    terms.extend([('metadata', el) for el in clean(v.strip())])
+            fields.remove('metadata')
         for f in fields:
             attr = getattr(object, f)
             if isinstance(attr, dict):
                 for k, v in attr.iteritems():
-                    terms.extend(clean(v.strip()))
+                    terms.extend([(f, el) for el in clean(v.strip())])
+                    terms.append((f, clean_full(v.strip())))
             else:
-                terms.extend(clean(attr))
+                terms.extend([(f, el) for el in clean(attr)])
+                terms.append((f, clean_full(attr)))
 
         object_type = object.__class__.__name__
-
-        for term in terms:
+        for term_type, term in terms:
             if cls.is_stop_word(term):
                 continue
             if len(term) < 2:
                 continue
-
             SearchIndex.create(term=term,
+                               term_type=term_type,
                                object_type=object_type,
                                object_id=object.id)
             result_count += 1
-
         return result_count
 
     def __unicode__(self):

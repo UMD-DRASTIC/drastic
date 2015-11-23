@@ -55,14 +55,9 @@ from indigo.models.search import SearchIndex
 import indigo.drivers
 
 
-def notify_agent(resource_id, event=""):
-    from nodes.client import choose_client
-    client = choose_client()
-    client.notify(resource_id, event)
-
 class Resource(Model):
     """Resource Model"""
-    id = columns.Text(default=default_cdmi_id)
+    id = columns.Text(default=default_cdmi_id, required=True)
     container = columns.Text(primary_key=True, required=True)
     name = columns.Text(primary_key=True, required=True)
     checksum = columns.Text(required=False)
@@ -121,8 +116,7 @@ class Resource(Model):
         resource = super(Resource, cls).create(**kwargs)
         state = resource.mqtt_get_state()
         resource.mqtt_publish('create', {}, state)
-        notify_agent(resource.path(), "resource:new")
-        SearchIndex.index(resource, ['name', 'metadata'])
+        resource.index()
         # Create a row in the ID index table
         idx = IDIndex.create(id=resource.id,
                              classname="indigo.models.resource.Resource",
@@ -164,7 +158,6 @@ class Resource(Model):
         if idx:
             idx.delete()
         SearchIndex.reset(self.id)
-        notify_agent(self.path(), "resource:delete")
         super(Resource, self).delete()
 
     @classmethod
@@ -211,6 +204,10 @@ class Resource(Model):
     def get_metadata_key(self, key):
         """Return the value of a metadata"""
         return decode_meta(self.metadata.get(key, ""))
+
+    def index(self):
+        SearchIndex.reset(self.id)
+        SearchIndex.index(self, ['name', 'metadata', 'mimetype'])
 
     def md_to_list(self):
         """Transform metadata to a list of couples for web ui"""
@@ -266,6 +263,7 @@ class Resource(Model):
         """Update a resource"""
         pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
+        pre_id = self.id
 
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
@@ -274,14 +272,22 @@ class Resource(Model):
 
         post_state = self.mqtt_get_state()
 
+        # Update id
+        if 'id' in kwargs:
+            if pre_id:
+                idx = IDIndex.find(pre_id)
+                if idx:
+                    idx.delete()
+            idx = IDIndex.create(id=self.id,
+                                 classname="indigo.models.resource.Resource",
+                                 key=self.path())
+
         if pre_state['metadata'] == post_state['metadata']:
             self.mqtt_publish('update_object', pre_state, post_state)
         else:
             self.mqtt_publish('update_metadata', pre_state, post_state)
         
-        notify_agent(self.path(), "resource:edit")
-        SearchIndex.reset(self.path())
-        SearchIndex.index(self, ['name', 'metadata'])
+        self.index()
 
         # TODO: If we update the url we need to delete the blob
 
