@@ -170,7 +170,8 @@ class Resource(Model):
         """Return a resource from a uuid"""
         idx = IDIndex.find(id_string)
         if idx:
-            if idx.classname == "indigo.models.resource.Resource":
+#            if idx.classname == "indigo.models.resource.Resource":
+            if idx.classname.endswith("Resource"):
                 return cls.find(idx.key)
         return None
 

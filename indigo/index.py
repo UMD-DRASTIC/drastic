@@ -94,13 +94,9 @@ def do_index(cfg, args):
     stmt = SimpleStatement('SELECT id,container,name from collection')
     for id, container, name in session.execute(stmt):
         ctr += 1
-        if container == "null":
-            collection = Collection.find("/")
-        elif container == '/':
-            collection = Collection.find("/{}".format(name))
-        else:
-            collection = Collection.find("{}/{}".format(container, name))
-        q.put(collection)
+        collection = Collection.objects.filter(container=container, name=name).first()
+        if collection:
+            q.put(collection)
         if ctr % 1000 == 999:
             T1 = time.time()
             print '{} directories processed in {} seconds = {} / sec '.format(
@@ -115,11 +111,9 @@ def do_index(cfg, args):
     stmt = SimpleStatement('SELECT id,container,name from resource ')
     for id, container, name in session.execute(stmt):
         ctr += 1
-        if container == '/':
-            resource = Resource.find("/{}".format(name))
-        else:
-            resource = Resource.find("{}/{}".format(container, name))
-        q.put(resource)
+        resource = Resource.objects.filter(container=container, name=name).first()
+        if resource:
+            q.put(resource)
         if ctr % 1000 == 999:
             T1 = time.time()
             print '{} resources processed in {} seconds = {} / sec '.format(

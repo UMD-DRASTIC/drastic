@@ -50,7 +50,7 @@ class SearchIndex(Model):
             """Return the object corresponding to the SearchIndex object"""
             if obj.object_type == 'Collection':
                 result_obj = Collection.find_by_id(obj.object_id)
-                if not result_obj.user_can(user, "read"):
+                if not result_obj or not result_obj.user_can(user, "read"):
                     return None
 
                 result_obj = result_obj.to_dict(user)
@@ -59,7 +59,7 @@ class SearchIndex(Model):
             elif obj.object_type == 'Resource':
                 result_obj = Resource.find_by_id(obj.object_id)
                 # Check the resource's collection for read permission
-                if not result_obj.user_can(user, "read"):
+                if not result_obj or not result_obj.user_can(user, "read"):
                     return None
 
                 result_obj = result_obj.to_dict(user)
@@ -129,11 +129,17 @@ class SearchIndex(Model):
 
         def clean(t):
             """Clean a term"""
-            return t.lower().replace('.', ' ').replace('_', ' ').split(' ')
+            if t:
+                return t.lower().replace('.', ' ').replace('_', ' ').split(' ')
+            else:
+                return []
 
         def clean_full(t):
             """Clean a term but keep all chars"""
-            return t.lower()
+            if t:
+                return t.lower()
+            else:
+                return ""
 
         terms = []
         if 'metadata' in fields:

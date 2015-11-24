@@ -208,7 +208,8 @@ class Collection(Model):
         """Return a collection from a uuid"""
         idx = IDIndex.find(id_string)
         if idx:
-            if idx.classname == "indigo.models.collection.Collection":
+#            if idx.classname == "indigo.models.collection.Collection":
+            if idx.classname.endswith("Collection"):
                 return cls.find(idx.key)
         return None
 
