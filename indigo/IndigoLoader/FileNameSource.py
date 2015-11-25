@@ -168,14 +168,24 @@ class DBQuery(FileNameSource, DB):
         ucmd = '''PREPARE M1 (TEXT,resource_status) AS UPDATE "{0}" SET status='DONE' WHERE path = $1 and status <> $2 '''.format(
             self.tablename)
         self.cs1.execute(ucmd)
+        # And retreive the values for the status
+        self.cs1.execute('''SELECT unnest(enum_range(NULL::resource_status))''')
+        self.status_values = set( ( k[0] for k in self.cs1.fetchall() ))
+        return
 
     def confirm_completion(self, path, status = 'DONE'):
+        if status not in self.status_values :
+            if status == 'FAILED' : status = 'BROKEN'
+            else : raise ValueError("bad value for enum -- {} : should be {}".format(status,self.status_values) )
+        ####
         try:
-            self.cs1.execute('EXECUTE M1(%s,%2)', [path,status])
+            self.cs1.execute('EXECUTE M1(%s,%s)', [path,status])
             updates = self.cs1.rowcount
+            self.cs1.connection.commit()
             return True
         except Exception as e:
-            print 'failed to update status for ', path
+            print 'failed to update status for ', path,'\n',e
+            self.cs1.connection.rollback()
             return False
 
     def next(self):
@@ -204,17 +214,11 @@ def CreateFileNameSource(args, cfg):
     :return: iterator
     """
     src = args['<source_directory>']
-    mode = [ k[2:] for k in ['--walk','--read','--postgres','--sqlite'] if args[k] ]
-    if len(mode) > 1: raise NotImplementedError
-    mode = mode[0]
-
     prefix = args['--prefix']
     if not prefix:
         prefix = '/data'
     else:
         prefix = prefix.rstrip('/')
-    if mode == 'postgres':    return DBQuery(args, cfg)
-
 
     if not src.startswith(prefix):
         print src, ' must be a subdirectory of the host data directory (--prefix=', prefix, ')'
@@ -222,9 +226,10 @@ def CreateFileNameSource(args, cfg):
         sys.exit(1)
     #########
     ## Set up a source that gets list of files from a file
-    if mode == 'read':  return FileList(args, cfg)
-    if mode == 'walk':  return DirectoryWalk(args, cfg)
-    if mode == 'sqlite3' :
+    if args['--read'] : return FileList(args, cfg)
+    if args['--walk']:  return DirectoryWalk(args, cfg)
+    if args['--postgres'] :  return DBQuery(args, cfg)
+    if args['--sqlite3'] :
         raise NotImplementedError
 
 

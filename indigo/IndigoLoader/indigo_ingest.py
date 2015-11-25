@@ -45,6 +45,7 @@ def prepare(args, cfg):
     reader = CreateFileNameSource(args, cfg)
     queue = FileNameSource.DBPrepare(args, cfg)
     cnt = 0
+    T0 = time.time()
     for path in reader:
         cnt += 1
         try:
@@ -54,6 +55,7 @@ def prepare(args, cfg):
         if cnt % 10000 == 0:
             print "{0} entries added in {1} seconds, rate = {2:0.2f}".format(cnt, time.time() - T0,
                                                                              cnt / time.time() - T0)
+    print "{0} entries added in {1} seconds, rate = {2:0.2f}".format(cnt, time.time() - T0,  cnt / time.time() - T0)
     return 1
 
 
@@ -117,20 +119,20 @@ args_doc = \
 u'''Ingest data files into Indigo from a directory tree
 
 Usage:
-     ingest prepare  [--config=CONFIG] (--walk|--read) [--dataset=DATASET_NAME (--postgres|--sqlite)]  (<source_directory>|-)
-     ingest inject   [--config=CONFIG] (--copy|--link) [--dataset=DATASET_NAME --prefix=PREFIX --localip=LOCAL_IP] (--walk|--read) (<source_directory>|-)
-     ingest inject   [--config=CONFIG] (--copy|--link) [--dataset=DATASET_NAME --prefix=PREFIX --localip=LOCAL_IP] (--postgres|--sqlite)
-     ingest validate [--config=CONFIG] [--config=CONFIG] (--dataset=DATASET_NAME|<source_directory>)
-     ingest summary  [--config=CONFIG] [--dataset=DATASET_NAME --config=CONFIG]   [(--postgres|--sqlite)]
+     ingest prepare  (--walk|--read) [--config=CONFIG  --dataset=DATASET_NAME --prefix=PREFIX  (--postgres|--sqlite)]  (<source_directory>|-)
+     ingest inject   (--copy|--link) [--config=CONFIG  --dataset=DATASET_NAME --prefix=PREFIX --localip=LOCAL_IP] (--walk|--read) (<source_directory>|-)
+     ingest inject   (--copy|--link) [--config=CONFIG  --dataset=DATASET_NAME --prefix=PREFIX --localip=LOCAL_IP] (--postgres|--sqlite)
+     ingest validate (--dataset=DATASET_NAME|<source_directory>)
+     ingest summary  [--config=CONFIG  --dataset=DATASET_NAME ]   [(--postgres|--sqlite)]
 
 
-Arguments:
-     inject    – actually move the data into the repository, either by linking or copying
-     prepare   – harvest the file names for later injections',
-     validate  – check that every file name marked as ingested is present in the repository
-     summary   – list the counts of all the states
+ Arguments:
+     inject    -- actually move the data into the repository, either by linking or copying
+     prepare   -- harvest the file names for later injections',
+     validate  -- check that every file name marked as ingested is present in the repository
+     summary   -- list the counts of all the states
 
-Options:
+ Options:
     --config=CONFIG          # location of config file [ default : ~/.indigo-ingest.cfg ]
     --prefix=PREFIX          # specify the directory that is the root of the local vault [ default: /data ]
     --dataset=DATASET_NAME   # a name for the prepared data [ default: resource ]
@@ -143,7 +145,7 @@ Options:
     --sqlite                 # read file names from or store filenames to a postgres database
 
 '''
-help_text='''
+help_text=u'''
 The basic workflow provided by this utility is to acquire a list of file names and inject
 them into the Indigo store.
 
@@ -178,7 +180,7 @@ indigo access control, and so typically can only work on an indigo server.  Send
 embedded files, but not linked.
 
 '''
-# docopt is definitely broken ... so clean up string a little.
+# docopt is definitely broken on long complex strings  ... so clean up string a little.
 args_doc_tidied = args_doc.split('\n')
 args_doc_tidied = u'\n'.join([ k.split('#')[0]  for k in args_doc_tidied])
 
@@ -191,12 +193,15 @@ def main():
     ## TODO: remove test fragment
     if len(sys.argv) < 3:
         args = 'inject --copy --postgres --prefix=/Users/johnburns/PycharmProjects --dataset=resource'.strip().split()
+        args = '''prepare --walk  --postgres  --prefix=/Users/johnburns/PycharmProjects /Users/johnburns/PycharmProjects'''.split()
     ### End Remove
 
 
     try : args = docopt.docopt(args_doc_tidied, args)
     except docopt.DocoptExit as e :
-        print args_doc.encode('utf-8'),help_text.encode('utf-8')
+        print args_doc.encode('utf-8'),
+        print help_text.encode('utf-8')
+        print 'Command Line:\n' + (' '.join(args))
         raise
     except docopt.DocoptLanguageError as e :
         print e

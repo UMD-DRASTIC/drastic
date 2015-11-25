@@ -22,7 +22,7 @@ from collections import OrderedDict
 from os.path import abspath
 
 from cassandra.cqlengine.query import BatchQuery
-
+from indigo.models.blob import BlobPart
 from indigo.models.blob import Blob
 from indigo.models.collection import Collection
 from indigo.models.errors import (ResourceConflictError, NoSuchCollectionError)
@@ -156,10 +156,10 @@ class CopyWriter(writer):
                         blob = Blob.find(old_resource_id)
                         if blob:
                             for k in blob.parts :
-                                from indigo.models.blob import BlobPart
+
                                 part_id = BlobPart.find(k)
                                 if part_id : part_id.delete()
-                        blob.delete()
+                            blob.delete()
                     ## End Tidy...      This really should be in the model
                 except SocketError as e :
                     pass
