@@ -147,7 +147,10 @@ class Resource(Model):
         # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
         logging.info(u'Publishing on topic "{0}"'.format(topic))
-        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        try:
+            publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        except:
+            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
         driver = indigo.drivers.get_driver(self.url)
@@ -274,14 +277,14 @@ class Resource(Model):
         post_state = self.mqtt_get_state()
 
         # Update id
-        if 'id' in kwargs:
-            if pre_id:
-                idx = IDIndex.find(pre_id)
-                if idx:
-                    idx.delete()
-            idx = IDIndex.create(id=self.id,
-                                 classname="indigo.models.resource.Resource",
-                                 key=self.path())
+#         if 'id' in kwargs:
+#             if pre_id:
+#                 idx = IDIndex.find(pre_id)
+#                 if idx:
+#                     idx.delete()
+#             idx = IDIndex.create(id=self.id,
+#                                  classname="indigo.models.resource.Resource",
+#                                  key=self.path())
 
         if pre_state['metadata'] == post_state['metadata']:
             self.mqtt_publish('update_object', pre_state, post_state)

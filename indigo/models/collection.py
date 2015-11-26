@@ -167,7 +167,10 @@ class Collection(Model):
         # script is set to run on such a collection name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
         logging.info(u'Publishing on topic "{0}"'.format(topic))
-        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        try:
+            publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        except:
+            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
         state = self.mqtt_get_state()
@@ -330,15 +333,15 @@ class Collection(Model):
 
         post_state = self.mqtt_get_state()
 
-        # Update id
-        if 'id' in kwargs:
-            if pre_id:
-                idx = IDIndex.find(pre_id)
-                if idx:
-                    idx.delete()
-            idx = IDIndex.create(id=self.id,
-                                 classname="indigo.models.collection.Collection",
-                                 key=self.path())
+#         # Update id
+#         if 'id' in kwargs:
+#             if pre_id:
+#                 idx = IDIndex.find(pre_id)
+#                 if idx:
+#                     idx.delete()
+#             idx = IDIndex.create(id=self.id,
+#                                  classname="indigo.models.collection.Collection",
+#                                  key=self.path())
         self.index()
 
         if pre_state['metadata'] == post_state['metadata']:

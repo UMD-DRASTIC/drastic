@@ -29,7 +29,7 @@ from cassandra.cluster import Cluster
 from indigo import get_config
 from indigo.models.resource import Resource
 from indigo.models.collection import Collection
-from indigo.models.search import SearchIndex
+from indigo.models.search2 import SearchIndex2
 from indigo.models.id_index import IDIndex
 from indigo.models import initialise
 from indigo.models.blob import Blob
@@ -37,7 +37,6 @@ from indigo.models.errors import (
     ResourceConflictError,
     NoSuchCollectionError
 )
-from indigo.models.search import SearchIndex
 from indigo.util import default_cdmi_id
 
 fp1 = open('null_id.txt','w')
@@ -57,22 +56,27 @@ def index_obj(obj):
         fp1.write("{}\n".format(str(dict(obj))))
         fp1.flush()
         # If the object doesn't have an id we regenerate one
-        obj.update(id=default_cdmi_id())
+        #obj.update(id=default_cdmi_id())
     else:
         # Check that the id is present in IDIndex
-        idx = IDIndex.find(obj.id)
-        if not idx:
-            if isinstance(obj, Resource):
-                class_name = "indigo.models.resource.Resource"
-            else:
-                class_name = "indigo.models.collection.Collection"
-            fp2.write("{}\n".format(str(dict(obj))))
-            fp2.flush()
-            idx = IDIndex.create(id=obj.id,
-                                 classname=class_name,
-                                 key=obj.path())
+#         idx = IDIndex.find(obj.id)
+#         if not idx:
+#             if isinstance(obj, Resource):
+#                 class_name = "indigo.models.resource.Resource"
+#             else:
+#                 class_name = "indigo.models.collection.Collection"
+#             fp2.write("{}\n".format(str(dict(obj))))
+#             fp2.flush()
+#             idx = IDIndex.create(id=obj.id,
+#                                  classname=class_name,
+#                                  key=obj.path())
         # Reindex the object
-        obj.index()
+        #obj.index()
+        #SearchIndex2.reset(obj.id)
+        if isinstance(obj, Resource):
+            SearchIndex2.index(obj, ['name', 'metadata', 'mimetype'])
+        else:
+            SearchIndex2.index(obj, ['name', 'metadata'])
 
 
 def do_index(cfg, args):
@@ -94,6 +98,8 @@ def do_index(cfg, args):
     stmt = SimpleStatement('SELECT id,container,name from collection')
     for id, container, name in session.execute(stmt):
         ctr += 1
+        if ctr == 10:
+            break
         collection = Collection.objects.filter(container=container, name=name).first()
         if collection:
             q.put(collection)
@@ -111,6 +117,8 @@ def do_index(cfg, args):
     stmt = SimpleStatement('SELECT id,container,name from resource ')
     for id, container, name in session.execute(stmt):
         ctr += 1
+        if ctr == 10:
+            break
         resource = Resource.objects.filter(container=container, name=name).first()
         if resource:
             q.put(resource)
