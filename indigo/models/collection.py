@@ -15,19 +15,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from datetime import datetime
 import json
+import logging
+
+import paho.mqtt.publish as publish
 from cassandra.cqlengine import (
     columns,
     connection
 )
 from cassandra.cqlengine.models import Model
-import paho.mqtt.publish as publish
-import logging
+from datetime import datetime
 
 from indigo import get_config
-from indigo.models.resource import Resource
-from indigo.models.group import Group
 from indigo.models.acl import (
     Ace,
     acemask_to_str,
@@ -36,6 +35,14 @@ from indigo.models.acl import (
     cdmi_str_to_acemask,
     serialize_acl_metadata
 )
+from indigo.models.errors import (
+    CollectionConflictError,
+    ResourceConflictError,
+    NoSuchCollectionError
+)
+from indigo.models.group import Group
+from indigo.models.id_index import IDIndex
+from indigo.models.resource import Resource
 from indigo.util import (
     decode_meta,
     default_cdmi_id,
@@ -46,12 +53,6 @@ from indigo.util import (
     split,
     datetime_serializer
 )
-from indigo.models.errors import (
-    CollectionConflictError,
-    ResourceConflictError,
-    NoSuchCollectionError
-)
-from indigo.models.id_index import IDIndex
 
 
 class Collection(Model):
@@ -113,9 +114,11 @@ class Collection(Model):
             raise CollectionConflictError(container)
 
         res = super(Collection, cls).create(**kwargs)
-        state = res.mqtt_get_state()
-        res.mqtt_publish('create', {}, state)
-        
+        try:
+            state = res.mqtt_get_state()
+            res.mqtt_publish('create', {}, state)
+        except Exception as e:
+            pass
         # Create a row in the ID index table
         idx = IDIndex.create(id=res.id,
                              classname="indigo.models.collection.Collection",
@@ -318,13 +321,15 @@ class Collection(Model):
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
         super(Collection, self).update(**kwargs)
+        try:
+            post_state = self.mqtt_get_state()
 
-        post_state = self.mqtt_get_state()
-
-        if pre_state['metadata'] == post_state['metadata']:
-            self.mqtt_publish('update_object', pre_state, post_state)
-        else:
-            self.mqtt_publish('update_metadata', pre_state, post_state)
+            if pre_state['metadata'] == post_state['metadata']:
+                self.mqtt_publish('update_object', pre_state, post_state)
+            else:
+                self.mqtt_publish('update_metadata', pre_state, post_state)
+        except Exception as e :
+            pass
 
         return self
     def create_acl(self, read_access, write_access):

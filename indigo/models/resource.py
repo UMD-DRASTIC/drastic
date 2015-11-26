@@ -15,22 +15,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from datetime import datetime
 import json
 import logging
+
 from cassandra.cqlengine import (
     columns,
     connection
 )
 from cassandra.cqlengine.models import Model
+from datetime import datetime
 from paho.mqtt import publish
 
+import indigo.drivers
 from indigo import get_config
-from indigo.models.errors import (
-    NoSuchCollectionError,
-    ResourceConflictError
-)
-from indigo.models.group import Group
 from indigo.models.acl import (
     Ace,
     acemask_to_str,
@@ -39,6 +36,12 @@ from indigo.models.acl import (
     cdmi_str_to_acemask,
     serialize_acl_metadata
 )
+from indigo.models.errors import (
+    NoSuchCollectionError,
+    ResourceConflictError
+)
+from indigo.models.group import Group
+from indigo.models.id_index import IDIndex
 from indigo.util import (
     decode_meta,
     default_cdmi_id,
@@ -49,9 +52,6 @@ from indigo.util import (
     split,
     datetime_serializer
 )
-from indigo.models.id_index import IDIndex
-
-import indigo.drivers
 
 
 class Resource(Model):
@@ -113,10 +113,10 @@ class Resource(Model):
                                               kwargs['name']))
 
         res = super(Resource, cls).create(**kwargs)
-
-        state = res.mqtt_get_state()
-        res.mqtt_publish('create', {}, state)
-        
+        try:
+            state = res.mqtt_get_state()
+            res.mqtt_publish('create', {}, state)
+        except : pass
         # Create a row in the ID index table
         idx = IDIndex.create(id=res.id,
                              classname="indigo.models.resource.Resource",
@@ -263,13 +263,15 @@ class Resource(Model):
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
         super(Resource, self).update(**kwargs)
+        try:
+            post_state = self.mqtt_get_state()
 
-        post_state = self.mqtt_get_state()
-
-        if pre_state['metadata'] == post_state['metadata']:
-            self.mqtt_publish('update_object', pre_state, post_state)
-        else:
-            self.mqtt_publish('update_metadata', pre_state, post_state)
+            if pre_state['metadata'] == post_state['metadata']:
+                self.mqtt_publish('update_object', pre_state, post_state)
+            else:
+                self.mqtt_publish('update_metadata', pre_state, post_state)
+        except Exception as e :
+            pass
 
         # TODO: If we update the url we need to delete the blob
 
