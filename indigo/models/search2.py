@@ -29,30 +29,26 @@ from cassandra.cqlengine.models import Model
 import logging
 
 from indigo.util import default_uuid
+from indigo.models.collection import Collection
+from indigo.models.resource import Resource
 
-
-class SearchIndex(Model):
+class SearchIndex2(Model):
     """SearchIndex Model"""
-    id = columns.Text(primary_key=True, default=default_uuid)
-    term = columns.Text(required=True, index=True)
-    term_type = columns.Text(required=True)
+    term = columns.Text(required=True, primary_key=True)
+    term_type = columns.Text(required=True, primary_key=True)
+    object_id = columns.Text(required=True, primary_key=True)
     object_type = columns.Text(required=True)
-    object_id = columns.Text(required=True, index=True)
-
+    id = columns.Text(default=default_uuid)
+    
     @classmethod
     def find(cls, termstrings, user):
-        """Search for terms in the archive"""
-        # termstrings should have been lower cased and cleaned
-        from indigo.models.collection import Collection
-        from indigo.models.resource import Resource
-
+        
         def get_object(obj, user):
             """Return the object corresponding to the SearchIndex object"""
             if obj.object_type == 'Collection':
                 result_obj = Collection.find_by_id(obj.object_id)
                 if not result_obj or not result_obj.user_can(user, "read"):
                     return None
-
                 result_obj = result_obj.to_dict(user)
                 result_obj['result_type'] = 'Collection'
                 return result_obj
@@ -61,51 +57,26 @@ class SearchIndex(Model):
                 # Check the resource's collection for read permission
                 if not result_obj or not result_obj.user_can(user, "read"):
                     return None
-
                 result_obj = result_obj.to_dict(user)
                 result_obj['result_type'] = 'Resource'
                 return result_obj
-
             return None
-
-        #terms = [t for t in termstrings if not cls.is_stop_word(t)]
 
         result_objects = []
         for t in termstrings:
             if cls.is_stop_word(t):
                 continue
             result_objects.extend(cls.objects.filter(term=t).all())
-
+#        print result_objects
+        
         results = []
         for result in result_objects:
-            try:
-                results.append(get_object(result, user))
-            except AttributeError:
-                logging.warning(u"Problem with SearchIndex('{}','{}','{}','{}')".format(
-                                result.id,
-                                result.term,
-                                result.object_type,
-                                result.object_id))
-        #results = filter(lambda x: x, results)
-        results = [x for x in results if x]
+            obj = get_object(result, user)
+            if obj:
+                obj['hit_count'] = 1
+                results.append(obj)
 
-        # Do some sane ordering here to group together by ID and
-        # order by frequency. Add the hit_count to the object dictionary
-        # and then we can order on that
-        keys = set(r['id'] for r in results)
-
-        result_list = []
-        for k in keys:
-            # get each element with this key, count them, store the hit
-            # count and only add one to results
-            matches = [x for x in results if x['id'] == k]
-            match = matches[0]
-            match['hit_count'] = len(matches)
-            result_list.append(match)
-
-        return sorted(result_list,
-                      key=lambda res: res.get('hit_count', 0),
-                      reverse=True)
+        return results
 
     @classmethod
     def is_stop_word(cls, term):
@@ -170,10 +141,10 @@ class SearchIndex(Model):
                 continue
             if len(term) < 2:
                 continue
-            SearchIndex.create(term=term,
-                               term_type=term_type,
-                               object_type=object_type,
-                               object_id=object.id)
+            SearchIndex2.create(term=term,
+                                term_type=term_type,
+                                object_type=object_type,
+                                object_id=object.id)
             result_count += 1
         return result_count
 

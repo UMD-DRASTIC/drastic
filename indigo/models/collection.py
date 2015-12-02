@@ -15,18 +15,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from datetime import datetime
 import json
-import logging
-
-import paho.mqtt.publish as publish
 from cassandra.cqlengine import (
     columns,
     connection
 )
 from cassandra.cqlengine.models import Model
-from datetime import datetime
+import paho.mqtt.publish as publish
+import logging
 
 from indigo import get_config
+from indigo.models.group import Group
+from indigo.models.resource import Resource
+from indigo.models.search import SearchIndex
 from indigo.models.acl import (
     Ace,
     acemask_to_str,
@@ -35,14 +37,6 @@ from indigo.models.acl import (
     cdmi_str_to_acemask,
     serialize_acl_metadata
 )
-from indigo.models.errors import (
-    CollectionConflictError,
-    ResourceConflictError,
-    NoSuchCollectionError
-)
-from indigo.models.group import Group
-from indigo.models.id_index import IDIndex
-from indigo.models.resource import Resource
 from indigo.util import (
     decode_meta,
     default_cdmi_id,
@@ -53,12 +47,18 @@ from indigo.util import (
     split,
     datetime_serializer
 )
+from indigo.models.errors import (
+    CollectionConflictError,
+    ResourceConflictError,
+    NoSuchCollectionError
+)
+from indigo.models.id_index import IDIndex
 
 
 class Collection(Model):
     """Collection model"""
-    id = columns.Text(default=default_cdmi_id)
-    container = columns.Text(primary_key=True, required=False)
+    id = columns.Text(default=default_cdmi_id, required=True)
+    container = columns.Text(primary_key=True, required=True)
     name = columns.Text(primary_key=True, required=True)
     metadata = columns.Map(columns.Text, columns.Text, index=True)
     create_ts = columns.DateTime()
@@ -113,17 +113,16 @@ class Collection(Model):
         if collection is not None:
             raise CollectionConflictError(container)
 
-        res = super(Collection, cls).create(**kwargs)
-        try:
-            state = res.mqtt_get_state()
-            res.mqtt_publish('create', {}, state)
-        except Exception as e:
-            pass
+        collection = super(Collection, cls).create(**kwargs)
+        state = collection.mqtt_get_state()
+        collection.mqtt_publish('create', {}, state)
+        # Index the collection
+        collection.index()
         # Create a row in the ID index table
-        idx = IDIndex.create(id=res.id,
+        idx = IDIndex.create(id=collection.id,
                              classname="indigo.models.collection.Collection",
-                             key=res.path())
-        return res
+                             key=collection.path())
+        return collection
 
     @classmethod
     def create_root(cls):
@@ -168,7 +167,10 @@ class Collection(Model):
         # script is set to run on such a collection name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
         logging.info(u'Publishing on topic "{0}"'.format(topic))
-        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        try:
+            publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        except:
+            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
         state = self.mqtt_get_state()
@@ -176,6 +178,7 @@ class Collection(Model):
         idx = IDIndex.find(self.id)
         if idx:
             idx.delete()
+        SearchIndex.reset(self.id)
         super(Collection, self).delete()
 
     @classmethod
@@ -208,7 +211,8 @@ class Collection(Model):
         """Return a collection from a uuid"""
         idx = IDIndex.find(id_string)
         if idx:
-            if idx.classname == "indigo.models.collection.Collection":
+#            if idx.classname == "indigo.models.collection.Collection":
+            if idx.classname.endswith("Collection"):
                 return cls.find(idx.key)
         return None
 
@@ -229,6 +233,10 @@ class Collection(Model):
     def get_root_collection(cls):
         """Return the root collection"""
         return cls.objects.filter(container='null',name='Home').first()
+
+    def index(self):
+        SearchIndex.reset(self.id)
+        SearchIndex.index(self, ['name', 'metadata'])
 
     def __unicode__(self):
         return self.path()
@@ -316,22 +324,33 @@ class Collection(Model):
         """Update a collection"""
         pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
+        pre_id = self.id
 
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
         super(Collection, self).update(**kwargs)
-        try:
-            post_state = self.mqtt_get_state()
 
-            if pre_state['metadata'] == post_state['metadata']:
-                self.mqtt_publish('update_object', pre_state, post_state)
-            else:
-                self.mqtt_publish('update_metadata', pre_state, post_state)
-        except Exception as e :
-            pass
+        post_state = self.mqtt_get_state()
 
+#         # Update id
+#         if 'id' in kwargs:
+#             if pre_id:
+#                 idx = IDIndex.find(pre_id)
+#                 if idx:
+#                     idx.delete()
+#             idx = IDIndex.create(id=self.id,
+#                                  classname="indigo.models.collection.Collection",
+#                                  key=self.path())
+        self.index()
+
+        if pre_state['metadata'] == post_state['metadata']:
+            self.mqtt_publish('update_object', pre_state, post_state)
+        else:
+            self.mqtt_publish('update_metadata', pre_state, post_state)
         return self
+
+
     def create_acl(self, read_access, write_access):
         self.acl = {}
 
@@ -383,8 +402,8 @@ class Collection(Model):
                 "WHERE container='{}' AND name='{}'").format(
             keyspace,
             acl,
-            self.container,
-            self.name)
+            self.container.replace("'", "\''"),
+            self.name.replace("'", "\''"))
         connection.execute(query)
 
     def update_cdmi_acl(self, cdmi_acl):
@@ -418,8 +437,8 @@ class Collection(Model):
                 "WHERE container='{}' AND name='{}'").format(
             keyspace,
             acl,
-            self.container,
-            self.name)
+            self.container.replace("'", "\'"),
+            self.name.replace("'", "\'"))
         connection.execute(query)
 
     def get_authorized_actions(self, user):

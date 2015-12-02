@@ -15,19 +15,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+from datetime import datetime
 import json
 import logging
-
 from cassandra.cqlengine import (
     columns,
     connection
 )
 from cassandra.cqlengine.models import Model
-from datetime import datetime
 from paho.mqtt import publish
 
-import indigo.drivers
 from indigo import get_config
+from indigo.models.errors import (
+    NoSuchCollectionError,
+    ResourceConflictError
+)
+from indigo.models.group import Group
 from indigo.models.acl import (
     Ace,
     acemask_to_str,
@@ -36,12 +39,6 @@ from indigo.models.acl import (
     cdmi_str_to_acemask,
     serialize_acl_metadata
 )
-from indigo.models.errors import (
-    NoSuchCollectionError,
-    ResourceConflictError
-)
-from indigo.models.group import Group
-from indigo.models.id_index import IDIndex
 from indigo.util import (
     decode_meta,
     default_cdmi_id,
@@ -52,11 +49,15 @@ from indigo.util import (
     split,
     datetime_serializer
 )
+from indigo.models.id_index import IDIndex
+from indigo.models.search import SearchIndex
+
+import indigo.drivers
 
 
 class Resource(Model):
     """Resource Model"""
-    id = columns.Text(default=default_cdmi_id)
+    id = columns.Text(default=default_cdmi_id, required=True)
     container = columns.Text(primary_key=True, required=True)
     name = columns.Text(primary_key=True, required=True)
     checksum = columns.Text(required=False)
@@ -112,17 +113,16 @@ class Resource(Model):
             raise ResourceConflictError(merge(kwargs['container'],
                                               kwargs['name']))
 
-        res = super(Resource, cls).create(**kwargs)
-        try:
-            state = res.mqtt_get_state()
-            res.mqtt_publish('create', {}, state)
-        except : pass
+        resource = super(Resource, cls).create(**kwargs)
+        state = resource.mqtt_get_state()
+        resource.mqtt_publish('create', {}, state)
+        resource.index()
         # Create a row in the ID index table
-        idx = IDIndex.create(id=res.id,
+        idx = IDIndex.create(id=resource.id,
                              classname="indigo.models.resource.Resource",
-                             key=res.path())
+                             key=resource.path())
 
-        return res
+        return resource
 
     def mqtt_get_state(self):
         payload = dict()
@@ -147,7 +147,10 @@ class Resource(Model):
         # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
         topic = topic.replace('#', '').replace('+', '')
         logging.info(u'Publishing on topic "{0}"'.format(topic))
-        publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        try:
+            publish.single(topic, json.dumps(payload, default=datetime_serializer))
+        except:
+            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
         driver = indigo.drivers.get_driver(self.url)
@@ -157,6 +160,7 @@ class Resource(Model):
         idx = IDIndex.find(self.id)
         if idx:
             idx.delete()
+        SearchIndex.reset(self.id)
         super(Resource, self).delete()
 
     @classmethod
@@ -169,7 +173,8 @@ class Resource(Model):
         """Return a resource from a uuid"""
         idx = IDIndex.find(id_string)
         if idx:
-            if idx.classname == "indigo.models.resource.Resource":
+#            if idx.classname == "indigo.models.resource.Resource":
+            if idx.classname.endswith("Resource"):
                 return cls.find(idx.key)
         return None
 
@@ -203,6 +208,10 @@ class Resource(Model):
     def get_metadata_key(self, key):
         """Return the value of a metadata"""
         return decode_meta(self.metadata.get(key, ""))
+
+    def index(self):
+        SearchIndex.reset(self.id)
+        SearchIndex.index(self, ['name', 'metadata', 'mimetype'])
 
     def md_to_list(self):
         """Transform metadata to a list of couples for web ui"""
@@ -258,20 +267,31 @@ class Resource(Model):
         """Update a resource"""
         pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
+        pre_id = self.id
 
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
         super(Resource, self).update(**kwargs)
-        try:
-            post_state = self.mqtt_get_state()
 
-            if pre_state['metadata'] == post_state['metadata']:
-                self.mqtt_publish('update_object', pre_state, post_state)
-            else:
-                self.mqtt_publish('update_metadata', pre_state, post_state)
-        except Exception as e :
-            pass
+        post_state = self.mqtt_get_state()
+
+        # Update id
+#         if 'id' in kwargs:
+#             if pre_id:
+#                 idx = IDIndex.find(pre_id)
+#                 if idx:
+#                     idx.delete()
+#             idx = IDIndex.create(id=self.id,
+#                                  classname="indigo.models.resource.Resource",
+#                                  key=self.path())
+
+        if pre_state['metadata'] == post_state['metadata']:
+            self.mqtt_publish('update_object', pre_state, post_state)
+        else:
+            self.mqtt_publish('update_metadata', pre_state, post_state)
+        
+        self.index()
 
         # TODO: If we update the url we need to delete the blob
 
@@ -329,8 +349,8 @@ class Resource(Model):
                 "WHERE container='{}' AND name='{}'").format(
             keyspace,
             acl,
-            self.container,
-            self.name)
+            self.container.replace("'", "\''"),
+            self.name.replace("'", "\''"))
         connection.execute(query)
 
     def update_cdmi_acl(self, cdmi_acl):
@@ -364,8 +384,8 @@ class Resource(Model):
                 "WHERE container='{}' AND name='{}'").format(
             keyspace,
             acl,
-            self.container,
-            self.name)
+            self.container.replace("'", "\''"),
+            self.name.replace("'", "\''"))
         connection.execute(query)
 
     def get_authorized_actions(self, user):

@@ -38,4 +38,8 @@ class IDIndex(Model):
     @classmethod
     def find(cls, uuid):
         """Find an object by its uuid"""
-        return cls.objects.filter(id=uuid).first()
+        res = cls.objects.filter(id=uuid)
+        if res:
+            return res.first()
+        else:
+            return res
