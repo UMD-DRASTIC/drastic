@@ -16,7 +16,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 """
-from setuptools import setup
+import inspect
+import os
+from distutils.core import setup
+from setuptools import setup, find_packages
+
 
 setup(
     name='indigo',
@@ -34,7 +38,7 @@ setup(
         "nose==1.3.6",
         "blist==1.3.6",
         "requests==2.7.0",
-        "crcmod==1.7", 'docopt'
+        "crcmod==1.7"
     ],
     entry_points={
         'console_scripts': [
