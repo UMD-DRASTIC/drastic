@@ -24,6 +24,9 @@ import base64
 import os.path
 import json
 from datetime import datetime
+from time import time as timestamp
+import logging
+from indigo.log import init_log
 
 IDENT_PEN = 42223
 # CDMI ObjectId Length: 8 bits header + 16bits uuid
@@ -47,7 +50,7 @@ def _calculate_CRC16(id_):
     58273
 
     """
-    # Co-erce to bytearray. If already a bytearray this will create a copy
+    # Coerce to bytearray. If already a bytearray this will create a copy
     # so as to avoid side-effects of manipulation for CRC calculation
     id_ = bytearray(id_)
     # Reset CRC bytes in copy to 0 for calculation
@@ -154,17 +157,19 @@ class memoized(object):
             return value
 
     def __repr__(self):
-        '''Return the function's docstring.'''
+        """Return the function's docstring.
+        :return: basestring
+        """
         return self.func.__doc__
 
     def __get__(self, obj, objtype):
-        '''Support instance methods.'''
+        # """Support instance methods."""
         return functools.partial(self.__call__, obj)
 
 
 class IterStreamer(object):
     """
-    File-like streaming iterator.
+     File-like streaming iterator.
     """
     def __init__(self, generator):
         self.generator = generator
@@ -189,7 +194,7 @@ class IterStreamer(object):
                 chunk = self.next()
                 data += chunk
                 count += len(chunk)
-        except StopIteration, e:
+        except StopIteration  :
             self.leftover = ''
             return data
 
@@ -201,7 +206,8 @@ class IterStreamer(object):
 
 def meta_cassandra_to_cdmi(metadata):
     """Transform a metadata dictionary retrieved from Cassandra to a CDMI
-    metadata dictionary"""
+    metadata dictionary
+    :param metadata: """
     md = {}
     for k, v in metadata.items():
         try:
@@ -221,7 +227,9 @@ def meta_cassandra_to_cdmi(metadata):
 
 
 def decode_meta(value):
-    """Decode a specific metadata value"""
+    """Decode a specific metadata value
+    :param value:
+    """
     try:
         # Values are stored as json strings {'json': val}
         val_json = json.loads(value)
@@ -232,8 +240,12 @@ def decode_meta(value):
 
 
 def meta_cdmi_to_cassandra(metadata):
-    """Transform a metadata dictionary from CDMI request to a metadata
-    dictionary that can be stored in a Cassandra Model"""
+    """
+    Transform a metadata dictionary from CDMI request to a metadata
+    dictionary that can be stored in a Cassandra Model
+
+    :param metadata: dict
+    """
     d = {}
     for key, value in metadata.iteritems():
         # Don't store metadata without value
@@ -242,16 +254,15 @@ def meta_cdmi_to_cassandra(metadata):
         # Convert str to unicode
         if isinstance(value, str):
             value = unicode(value)
-        json_val = {}
-        json_val["json"] = value
-        d[key] = json.dumps(json_val)
+        d[key] = json.dumps({"json": value})
     return d
 
 
 def metadata_to_list(metadata):
     """Transform a metadata dictionary retrieved from Cassandra to a list of
-    tuples. If some metadata are lists they are splitted in several pairs in
-    the result list"""
+    tuples. If metadata items are lists they are split into multiple pairs in
+    the result list
+    :param metadata: dict"""
     res = []
     for k, v in metadata.iteritems():
         try:
@@ -271,7 +282,12 @@ def metadata_to_list(metadata):
 
 
 def merge(coll_name, resc_name):
-    """Create a full path from a collection name and a resource name"""
+    """
+    Create a full path from a collection name and a resource name
+    :param coll_name: basestring
+    :param resc_name: basestring
+    :return:
+    """
     if coll_name == '/':
         # For root we don't add the extra '/'
         return u"{}{}".format(coll_name, resc_name)
@@ -280,13 +296,103 @@ def merge(coll_name, resc_name):
 
 
 def split(path):
-    """Parse a full path and return the collection and the resource name"""
+    """
+    Parse a full path and return the collection and the resource name
+
+    :param path: basestring
+    """
     coll_name = os.path.dirname(path)
     resc_name = os.path.basename(path)
-    return (coll_name, resc_name)
+    return tuple((coll_name, resc_name))
 
 
 def datetime_serializer(obj):
-    """Convert a datetime object to its string representataion for JSON serialization."""
+    """Convert a datetime object to its string representation for JSON serialization.
+    :param obj: datetime
+    """
     if isinstance(obj, datetime):
         return obj.isoformat()
+
+
+log = logging.getLogger(__name__)
+
+
+class log_with(object):
+    """
+     Logging decorator that allows you to log with a specific logger.
+     """
+    # Customize these messages
+    ENTRY_MESSAGE = 'TIMING: Entering {}'
+    EXIT_MESSAGE = 'TIMING: Exiting {name} after {elapsed:,.2g}s (count={count} total={total:,.2f} avg = {avg:,.3g} )'
+    stats = dict()
+
+    def __init__(self, logger=None, name='tracer'):
+        self.logger = logger
+        self.counter = 0
+        self.total = 0.0
+        self.name = name
+
+    def __enter__(self):
+        self.T0 = timestamp()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        T1 = timestamp() - self.T0
+        stats = self.stats.get(self.name, [0, 0.0])
+        stats[0] += 1
+        stats[1] += T1
+        self.stats[self.name] = stats
+
+        msg = self.EXIT_MESSAGE.format(
+                name=self.name,
+                elapsed=T1,
+                count=stats[0],
+                total=stats[1],
+                avg=stats[1] / stats[0]
+        )
+        self.logger.info(msg)
+
+    def __call__(self, func):
+        """Returns a wrapper that wraps func.
+            The wrapper will log the entry and exit points of the function
+            with logging.INFO level.
+         """
+        # set logger if it was not set earlier
+        if not self.logger:
+            self.logger = init_log('indigo')
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwds):
+            T0 = timestamp()
+            f_result = func(*args, **kwds)
+            T1 = timestamp() - T0
+
+            name = []
+            try:
+                name.append(func.__module__)
+            except (AttributeError, NameError):
+                pass
+            try:
+                name.append(func.__name__)
+            except (AttributeError, NameError):
+                pass
+            if name:
+                name = ':'.join(name)
+            else:
+                name = '????'
+
+            stats = self.stats.get(id(func), [0, 0.0])
+            stats[0] += 1
+            stats[1] += T1
+            self.stats[id(func)] = stats
+
+            msg = self.EXIT_MESSAGE.format(
+                    name=name,
+                    elapsed=T1,
+                    count=stats[0],
+                    total=stats[1],
+                    avg=stats[1] / stats[0]
+            )
+            self.logger.info(msg)  # logging level .info(). Set to .debug() if you want to
+            return f_result
+
+        return wrapper
