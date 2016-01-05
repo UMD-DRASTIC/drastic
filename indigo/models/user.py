@@ -24,6 +24,8 @@ from indigo.models.group import Group
 from indigo.models.errors import UserConflictError
 from indigo.util import default_uuid
 
+from indigo.util import log_with
+
 
 class User(Model):
     """User Model"""
@@ -37,19 +39,20 @@ class User(Model):
     groups = columns.List(columns.Text, index=True)
 
     @classmethod
+    @log_with()
     def create(cls, **kwargs):
         """Create a user
 
         We intercept the create call so that we can correctly
         hash the password into an unreadable form
         """
+        size = 32
         if 'quick' in kwargs:
             rounds = 1
-            size = 1
             kwargs.pop('quick')
         else:
-            rounds = 200000
-            size = 16
+            rounds = 20
+
         kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                    rounds=rounds,
                                                    salt_size=size)
@@ -113,13 +116,13 @@ class User(Model):
         """Update a user"""
         # If we want to update the password we need to encrypt it first
         if "password" in kwargs:
+            size = 32
             if 'quick' in kwargs:
                 rounds = 1
-                size = 1
                 kwargs.pop('quick')
             else:
-                rounds = 200000
-                size = 16
+                rounds = 20
+
             kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                        rounds=rounds,
                                                        salt_size=size)
