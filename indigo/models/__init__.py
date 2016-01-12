@@ -29,9 +29,8 @@ from indigo.models.group import Group
 from indigo.models.user import User
 from indigo.models.node import Node
 from indigo.models.collection import Collection
-from indigo.models.search import SearchIndex
-from indigo.models.search2 import SearchIndex2
 from indigo.models.resource import Resource
+from indigo.models.search2 import SearchIndex2
 from indigo.models.blob import Blob, BlobPart
 from indigo.models.activity import Activity
 from indigo.models.id_index import IDIndex

@@ -50,7 +50,7 @@ from indigo.util import (
     datetime_serializer
 )
 from indigo.models.id_index import IDIndex
-from indigo.models.search import SearchIndex
+from indigo.models.search2 import SearchIndex2
 
 import indigo.drivers
 
@@ -160,7 +160,7 @@ class Resource(Model):
         idx = IDIndex.find(self.id)
         if idx:
             idx.delete()
-        SearchIndex.reset(self.id)
+        SearchIndex2.reset(self.id)
         super(Resource, self).delete()
 
     @classmethod
@@ -210,8 +210,8 @@ class Resource(Model):
         return decode_meta(self.metadata.get(key, ""))
 
     def index(self):
-        SearchIndex.reset(self.id)
-        SearchIndex.index(self, ['name', 'metadata', 'mimetype'])
+        SearchIndex2.reset(self.id)
+        SearchIndex2.index(self, ['name', 'metadata', 'mimetype'])
 
     def md_to_list(self):
         """Transform metadata to a list of couples for web ui"""
@@ -359,7 +359,12 @@ class Resource(Model):
         keyspace = cfg.get('KEYSPACE', 'indigo')
         ls_access = []
         for cdmi_ace in cdmi_acl:
-            g = Group.find(cdmi_ace['identifier'])
+            if 'identifier' in cdmi_ace:
+                gid = cdmi_ace['identifier']
+            else:
+                # Wrong syntax for the ace
+                continue
+            g = Group.find(gid)
             if g:
                 ident = g.name
             elif gid.upper() == "AUTHENTICATED@":

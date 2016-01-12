@@ -29,8 +29,6 @@ from cassandra.cqlengine.models import Model
 import logging
 
 from indigo.util import default_uuid
-from indigo.models.collection import Collection
-from indigo.models.resource import Resource
 
 class SearchIndex2(Model):
     """SearchIndex Model"""
@@ -42,7 +40,9 @@ class SearchIndex2(Model):
     
     @classmethod
     def find(cls, termstrings, user):
-        
+        from indigo.models.collection import Collection
+        from indigo.models.resource import Resource
+
         def get_object(obj, user):
             """Return the object corresponding to the SearchIndex object"""
             if obj.object_type == 'Collection':
@@ -67,16 +67,37 @@ class SearchIndex2(Model):
             if cls.is_stop_word(t):
                 continue
             result_objects.extend(cls.objects.filter(term=t).all())
-#        print result_objects
-        
+
         results = []
         for result in result_objects:
-            obj = get_object(result, user)
-            if obj:
-                obj['hit_count'] = 1
-                results.append(obj)
+            try:
+                results.append(get_object(result, user))
+            except AttributeError:
+                logging.warning(u"Problem with SearchIndex('{}','{}','{}','{}')".format(
+                                result.id,
+                                result.term,
+                                result.object_type,
+                                result.object_id))
 
-        return results
+        results = [x for x in results if x]
+
+        # Do some sane ordering here to group together by ID and
+        # order by frequency. Add the hit_count to the object dictionary
+        # and then we can order on that
+        keys = set(r['id'] for r in results)
+
+        result_list = []
+        for k in keys:
+            # get each element with this key, count them, store the hit
+            # count and only add one to results
+            matches = [x for x in results if x['id'] == k]
+            match = matches[0]
+            match['hit_count'] = len(matches)
+            result_list.append(match)
+
+        return sorted(result_list,
+                      key=lambda res: res.get('hit_count', 0),
+                      reverse=True)
 
     @classmethod
     def is_stop_word(cls, term):
@@ -134,6 +155,7 @@ class SearchIndex2(Model):
             else:
                 terms.extend([(f, el) for el in clean(attr)])
                 terms.append((f, clean_full(attr)))
+        
 
         object_type = object.__class__.__name__
         for term_type, term in terms:

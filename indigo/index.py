@@ -16,118 +16,116 @@ limitations under the License.
 """
 
 from threading import Thread
-import os
-import sys
-from Queue import Queue
-from cassandra.cqlengine import connection
-from cassandra.query import SimpleStatement
-from cassandra.cqlengine.functions import Token
+from Queue import Queue, Empty
+from cassandra.query import (
+    dict_factory,
+    SimpleStatement
+)
 import time
 from cassandra.cluster import Cluster
-
 
 from indigo import get_config
 from indigo.models.resource import Resource
 from indigo.models.collection import Collection
 from indigo.models.search2 import SearchIndex2
-from indigo.models.id_index import IDIndex
-from indigo.models import initialise
-from indigo.models.blob import Blob
-from indigo.models.errors import (
-    ResourceConflictError,
-    NoSuchCollectionError
-)
-from indigo.util import default_cdmi_id
 
-fp1 = open('null_id.txt','w')
-fp2 = open('missing_idindex.txt','w')
+cpt_indexed = 0
+global_time = time.time()
+nb_obj = -1
 
 
-def Start(q):
+def index(obj):
+    global cpt_indexed, global_time
+    if isinstance(obj, Resource):
+        SearchIndex2.index(obj, ['name', 'metadata', 'mimetype'])
+        cpt_indexed += 1
+    else:
+        SearchIndex2.index(obj, ['name', 'metadata'])
+        cpt_indexed += 1
+    if cpt_indexed % 1000 == 999:
+        T1 = time.time()
+        if nb_obj != -1:
+            percent = "({}%) ".format(int(float(cpt_indexed) / nb_obj * 100))
+        else:
+            percent = ""
+        print '{} {}objects indexed in {} seconds = {} / sec '.format(
+            cpt_indexed,
+            percent,
+            T1 - global_time,
+            (1000.0/(T1-global_time))
+        )
+        global_time = T1
+
+
+
+def do_work(q):
+    """
+    Pull an indexable object from the queue and process it
+    This will block when the queue is empty, and once the parent issues a 'join' it will be terminated
+
+    :param q: Queue
+    :return: None
+    """
     while True:
-        obj = q.get()
-        cnt = index_obj(obj)
+        obj = q.get(timeout=2)
+        index(obj)
         q.task_done()
 
 
-def index_obj(obj):
-    T0 = time.time()
-    if not obj.id:
-        fp1.write("{}\n".format(str(dict(obj))))
-        fp1.flush()
-        # If the object doesn't have an id we regenerate one
-        #obj.update(id=default_cdmi_id())
-    else:
-        # Check that the id is present in IDIndex
-#         idx = IDIndex.find(obj.id)
-#         if not idx:
-#             if isinstance(obj, Resource):
-#                 class_name = "indigo.models.resource.Resource"
-#             else:
-#                 class_name = "indigo.models.collection.Collection"
-#             fp2.write("{}\n".format(str(dict(obj))))
-#             fp2.flush()
-#             idx = IDIndex.create(id=obj.id,
-#                                  classname=class_name,
-#                                  key=obj.path())
-        # Reindex the object
-        #obj.index()
-        #SearchIndex2.reset(obj.id)
-        if isinstance(obj, Resource):
-            SearchIndex2.index(obj, ['name', 'metadata', 'mimetype'])
-        else:
-            SearchIndex2.index(obj, ['name', 'metadata'])
-
-
 def do_index(cfg, args):
+    global nb_obj
     cfg = get_config(None)
     keyspace = cfg.get('KEYSPACE', 'indigo')
     hosts = cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', ))
     cluster = Cluster(hosts)
     session = cluster.connect(keyspace)
-    
-    q = Queue(100)
-    threads = [Thread(target=Start, args=(q,)) for k in xrange(10)]
+    session.row_factory = dict_factory
+
+
+    work_queue = Queue()
+    # Have to start threads before pushing stuff onto queue ....
+    threads = [Thread(target=do_work, args=(work_queue,)) for k in xrange(8)]
     for t in threads:
-        t.setDaemon(True)
+        t.daemon = True
         t.start()
 
-    T0 = time.time()
-    ctr = 0
+    #### Divide the search space into chunks based on the token of the primary key
+    #### Will do both resource and collection in lockstep, since both are partitioned on collection
+    #### so both container and objects will be despatched ( more or less ) concurrently
+    ####
+    hi =  (1<<63)-1
+    lo =  -(1<<63)
+    delta = (hi-lo)/(1<<14)         # divide into 16M chunks
+    for fv in xrange(lo,hi,delta ):
+        stmt = SimpleStatement('SELECT * from collection where token(container) > {} and token(container) <= {} '.format(fv,min(fv+delta,hi)))
+        ctr_coll = 0
+        for row in session.execute(stmt, timeout=None):
+            ctr_coll += 1
+            work_queue.put(Collection(**row))
 
-    stmt = SimpleStatement('SELECT id,container,name from collection')
-    for id, container, name in session.execute(stmt):
-        ctr += 1
-        if ctr == 10:
+        stmt = SimpleStatement('SELECT * from resource where token(container) > {} and token(container) <= {}'.format(fv,min(fv+delta,hi)))
+        ctr_resc = 0
+        for row in session.execute(stmt, timeout=None):
+            ctr_resc += 1
+            work_queue.put(Resource(**row))
+        
+        if ctr_resc + ctr_coll > 20000:
             break
-        collection = Collection.objects.filter(container=container, name=name).first()
-        if collection:
-            q.put(collection)
-        if ctr % 1000 == 999:
-            T1 = time.time()
-            print '{} directories processed in {} seconds = {} / sec '.format(
-                ctr,
-                T1 - T0,
-                (1000.0/(T1-T0))
-            )
-            T0 = T1
 
+    nb_obj = work_queue.qsize()
+    print "Finishing indexing ({} objects in the queue)...".format(nb_obj)
     T0 = time.time()
-    ctr = 0
-    stmt = SimpleStatement('SELECT id,container,name from resource ')
-    for id, container, name in session.execute(stmt):
-        ctr += 1
-        if ctr == 10:
-            break
-        resource = Resource.objects.filter(container=container, name=name).first()
-        if resource:
-            q.put(resource)
-        if ctr % 1000 == 999:
-            T1 = time.time()
-            print '{} resources processed in {} seconds = {} / sec '.format(
-                ctr,
-                T1 - T0,
-                (1000.0/(T1-T0))
-            )
-            T0 = T1
-    q.join()      # block until all tasks are done
+
+    #### Wait for the queue to empty and all the work to be done..
+    work_queue.join()
+
+    print "Indexing finished"
+    for t in threads:
+        t.join()
+    T1 = time.time() - T0
+    print '{} objects processed in {} seconds = {} / sec '.format(
+        nb_obj,
+        T1  ,
+        (nb_obj/(T1 ))
+    )
+

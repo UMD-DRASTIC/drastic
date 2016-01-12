@@ -28,7 +28,7 @@ import logging
 from indigo import get_config
 from indigo.models.group import Group
 from indigo.models.resource import Resource
-from indigo.models.search import SearchIndex
+from indigo.models.search2 import SearchIndex2
 from indigo.models.acl import (
     Ace,
     acemask_to_str,
@@ -178,7 +178,7 @@ class Collection(Model):
         idx = IDIndex.find(self.id)
         if idx:
             idx.delete()
-        SearchIndex.reset(self.id)
+        SearchIndex2.reset(self.id)
         super(Collection, self).delete()
 
     @classmethod
@@ -235,8 +235,8 @@ class Collection(Model):
         return cls.objects.filter(container='null',name='Home').first()
 
     def index(self):
-        SearchIndex.reset(self.id)
-        SearchIndex.index(self, ['name', 'metadata'])
+        SearchIndex2.reset(self.id)
+        SearchIndex2.index(self, ['name', 'metadata'])
 
     def __unicode__(self):
         return self.path()
@@ -412,7 +412,12 @@ class Collection(Model):
         keyspace = cfg.get('KEYSPACE', 'indigo')
         ls_access = []
         for cdmi_ace in cdmi_acl:
-            g = Group.find(cdmi_ace['identifier'])
+            if 'identifier' in cdmi_ace:
+                gid = cdmi_ace['identifier']
+            else:
+                # Wrong syntax for the ace
+                continue
+            g = Group.find(gid)
             if g:
                 ident = g.name
             elif gid.upper() == "AUTHENTICATED@":

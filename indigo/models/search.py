@@ -45,6 +45,7 @@ class SearchIndex(Model):
         # termstrings should have been lower cased and cleaned
         from indigo.models.collection import Collection
         from indigo.models.resource import Resource
+        from indigo.models.search2 import SearchIndex2
 
         def get_object(obj, user):
             """Return the object corresponding to the SearchIndex object"""
@@ -75,6 +76,7 @@ class SearchIndex(Model):
             if cls.is_stop_word(t):
                 continue
             result_objects.extend(cls.objects.filter(term=t).all())
+            result_objects.extend(SearchIndex2.objects.filter(term=t).all())
 
         results = []
         for result in result_objects:
@@ -86,6 +88,7 @@ class SearchIndex(Model):
                                 result.term,
                                 result.object_type,
                                 result.object_id))
+            result.delete()
         #results = filter(lambda x: x, results)
         results = [x for x in results if x]
 
@@ -102,6 +105,7 @@ class SearchIndex(Model):
             match = matches[0]
             match['hit_count'] = len(matches)
             result_list.append(match)
+        
 
         return sorted(result_list,
                       key=lambda res: res.get('hit_count', 0),
@@ -176,6 +180,7 @@ class SearchIndex(Model):
                                object_id=object.id)
             result_count += 1
         return result_count
+
 
     def __unicode__(self):
         return unicode("".format(self.term, self.object_type))
