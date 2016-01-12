@@ -34,10 +34,10 @@ from indigo.util import default_uuid
 class SearchIndex(Model):
     """SearchIndex Model"""
     id = columns.Text(primary_key=True, default=default_uuid)
-    term = columns.Text(required=True, index=True)
+    term = columns.Text(required=True)
     term_type = columns.Text(required=True)
     object_type = columns.Text(required=True)
-    object_id = columns.Text(required=True, index=True)
+    object_id = columns.Text(required=True)
 
     @classmethod
     def find(cls, termstrings, user):
