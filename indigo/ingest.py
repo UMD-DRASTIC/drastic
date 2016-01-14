@@ -25,7 +25,7 @@ from Queue import Queue
 
 from cassandra.cqlengine.query import BatchQuery
 
-from indigo.models.search import SearchIndex2
+from indigo.models.search2 import SearchIndex2
 from indigo.models.blob import Blob
 from indigo.models.user import User
 from indigo.models.group import Group
