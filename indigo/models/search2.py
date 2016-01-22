@@ -29,6 +29,7 @@ from cassandra.cqlengine.models import Model
 import logging
 
 from indigo.util import default_uuid
+from indigo.models.id_search import IDSearch
 
 class SearchIndex2(Model):
     """SearchIndex Model"""
@@ -37,6 +38,17 @@ class SearchIndex2(Model):
     object_id = columns.Text(required=True, primary_key=True)
     object_type = columns.Text(required=True)
     id = columns.Text(default=default_uuid)
+
+    @classmethod
+    def create(cls, **kwargs):
+        """Create a new indexed term"""
+        idx = super(SearchIndex2, cls).create(**kwargs)
+
+        # Create a row in the ID search table
+        idx = IDSearch.create(object_id=idx.object_id,
+                              term=idx.term,
+                              term_type=idx.term_type)
+        return idx
     
     @classmethod
     def find(cls, termstrings, user):
@@ -108,11 +120,16 @@ class SearchIndex2(Model):
                         "to"]
 
     @classmethod
-    def reset(cls, id):
+    def reset(cls, object_id):
         """Delete objects from the SearchIndex"""
-        # Have to delete one at a time without a partition index.
-        for obj in cls.objects.filter(object_id=id).all():
-            obj.delete()
+        rows = IDSearch.find(object_id)
+        for id_obj in rows:
+            obj = cls.objects.filter(term=id_obj.term,
+                                     term_type=id_obj.term_type,
+                                     object_id=id_obj.object_id).first()
+            if obj:
+                obj.delete()
+            id_obj.delete()
 
     @classmethod
     def index(cls, object, fields=['name']):
