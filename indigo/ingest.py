@@ -308,14 +308,14 @@ class ThreadClass(Thread):
             # OK -- try to insert ( create ) the record...
             t1 = time.time()
             resource = Resource.batch(b).create(url=url, **rdict)
-            msg = 'Resource {} created --> {}'.format(resource.name,
+            msg = 'Resource {} created --> {}'.format(resource.get_name(),
                                                       time.time() - t1)
             logger.info(msg)
         except ResourceConflictError:
             # If the create fails, the record already exists... so retrieve it...
             t1 = time.time()
             resource = Resource.objects().get(container=context['collection'], name=rdict['name'])
-            msg = "{} ::: Fetch Object -> {}".format(resource.name, time.time() - t1)
+            msg = "{} ::: Fetch Object -> {}".format(resource.get_name(), time.time() - t1)
             logger.info(msg)
 
         # if the url is not correct then update
@@ -326,7 +326,7 @@ class ThreadClass(Thread):
             # if url.startswith('cassandra://') : tidy up the stored block count...
             resource.batch(b).update(url=url)
             t3 = time.time()
-            msg = "{} ::: update -> {}".format(resource.name, t3 - t2)
+            msg = "{} ::: update -> {}".format(resource.get_name(), t3 - t2)
             logger.info(msg)
 
         # t1 = time.time()

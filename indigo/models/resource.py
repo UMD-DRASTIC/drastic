@@ -129,7 +129,7 @@ class Resource(Model):
         payload['id'] = self.id
         payload['url'] = self.url
         payload['container'] = self.container
-        payload['name'] = self.name
+        payload['name'] = self.get_name()
         payload['create_ts'] = self.create_ts
         payload['modified_ts'] = self.modified_ts
         payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
@@ -140,7 +140,7 @@ class Resource(Model):
         payload = dict()
         payload['pre'] = pre_state
         payload['post'] = post_state
-        topic = u'{0}/resource{1}/{2}'.format(operation, self.container, self.name)
+        topic = u'{0}/resource{1}/{2}'.format(operation, self.container, self.get_name())
         # Clean up the topic by removing superfluous slashes.
         topic = '/'.join(filter(None, topic.split('/')))
         # Remove MQTT wildcards from the topic. Corner-case: If the resource name is made entirely of # and + and a
@@ -153,8 +153,9 @@ class Resource(Model):
             logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
-        driver = indigo.drivers.get_driver(self.url)
-        driver.delete_blob()
+        if self.url.startswith("cassandra://"):
+            driver = indigo.drivers.get_driver(self.url)
+            driver.delete_blob()
         state = self.mqtt_get_state()
         self.mqtt_publish('delete', state, {})
         idx = IDIndex.find(self.id)
@@ -209,9 +210,21 @@ class Resource(Model):
         """Return the value of a metadata"""
         return decode_meta(self.metadata.get(key, ""))
 
+    def get_name(self):
+        """Return the name of a resource. If the resource is a reference we
+        append a trailing '?' on the resource name"""
+        # References are object whose url doesn't start with 'cassandra://'
+        if self.is_reference():
+            return "{}?".format(self.name)
+        else:
+            return self.name
+
     def index(self):
         SearchIndex2.reset(self.id)
         SearchIndex2.index(self, ['name', 'metadata', 'mimetype'])
+
+    def is_reference(self):
+        return not self.url.startswith("cassandra://")
 
     def md_to_list(self):
         """Transform metadata to a list of couples for web ui"""
@@ -244,7 +257,7 @@ class Resource(Model):
         """Return a dictionary which describes a resource for the web ui"""
         data = {
             "id": self.id,
-            "name": self.name,
+            "name": self.get_name(),
             "container": self.container,
             "path": self.path(),
             "checksum": self.checksum,
@@ -255,6 +268,7 @@ class Resource(Model):
             "mimetype": self.mimetype or "application/octet-stream",
             "type": self.type,
             "url": self.url,
+            "is_reference": self.is_reference()
         }
         if user:
             data['can_read'] = self.user_can(user, "read")
