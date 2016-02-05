@@ -93,12 +93,11 @@ def user_add(cfg, username=None):
 def group_add(cfg, args):
     """Add a group"""
     from indigo.models import Group, User
-    if not args or not len(args) == 2:
-        print "Error: Group Name and Username are required parameters"
+    if not args or not len(args) == 1:
+        print "Error: Group Name is required parameter"
         sys.exit(0)
 
-    name, username = args
-    user = User.find(username)
+    name = args[0]
     try:
         group = Group.create(name=name)
     except GroupConflictError:
