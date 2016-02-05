@@ -1,0 +1,5 @@
+global-include *.py
+global-include *.md
+global-include *.cfg
+
+prune dist
