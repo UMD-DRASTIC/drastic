@@ -76,19 +76,20 @@ def on_disconnect(client, userdata, rc):
 # noinspection PyUnusedLocal
 def on_message(client, userdata, msg):
     if mqtt.topic_matches_sub(script_directory_topic, msg.topic):
+        # Something happens in the scripts folder, update scripts
         path = msg.topic.split('/')
         operation = path[0]
         script = '/'.join(path[3:])
         payload = json.loads(msg.payload)
-
+        
         try:
-            trigger_topic = payload['metadata']['topic']
+            trigger_topic = payload['post']['metadata']['topic']
         except KeyError:
             logger.warning('Script "{0}" does not have a trigger topic. Ignoring.'.format(script))
             logger.debug('Payload: {}'.format(json.dumps(payload)))
             return
 
-        if operation not in ('delete', 'create', 'update'):
+        if operation not in ('delete', 'create', 'update', 'update_object', 'update_metadata'):
             logger.warning('Unknown operation "{0}" for script "{1}". Ignoring.'.format(operation, script))
             return
 
@@ -103,7 +104,7 @@ def on_message(client, userdata, msg):
             return
 
         # TODO: Refactor this and combine it with the scan_script_collection() function.
-        driver = drivers.get_driver(payload['url'])
+        driver = drivers.get_driver(payload['post']['url'])
 
         script_contents = StringIO.StringIO()
 
@@ -164,7 +165,7 @@ def execute_script(script, topic, payload):
 
     # TODO: Limit the available memory for each instance.
     # TODO: Open up certain ports.
-    docker_cmd = 'docker run --rm -i -v {0}:/scripts alloy_python'.format(directory)
+    docker_cmd = 'docker run --rm --net="host" -i -v {0}:/scripts alloy_python'.format(directory)
     logger.debug('{0} {1} {2} {3}'.format(docker_cmd, filename, topic, payload))
     params = docker_cmd.split()
     params.extend((filename, topic, payload))
