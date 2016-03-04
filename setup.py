@@ -24,7 +24,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='indigo',
-    version="1.0",
+    version="1.1",
     description='Indigo core library',
     extras_require={},
     long_description="Core library for Indigo development",
