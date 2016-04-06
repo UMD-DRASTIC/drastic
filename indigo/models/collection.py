@@ -16,435 +16,183 @@ limitations under the License.
 """
 
 from datetime import datetime
-import json
-from cassandra.cqlengine import (
-    columns,
-    connection
-)
-from cassandra.cqlengine.models import Model
-import paho.mqtt.publish as publish
-import logging
+from cassandra.cqlengine import connection
+from cassandra.query import SimpleStatement
 
 from indigo import get_config
-from indigo.models.group import Group
-from indigo.models.resource import Resource
-from indigo.models.search2 import SearchIndex2
+from indigo.models import TreeEntry
 from indigo.models.acl import (
-    Ace,
     acemask_to_str,
-    cdmi_str_to_aceflag,
-    str_to_acemask,
-    cdmi_str_to_acemask,
-    serialize_acl_metadata
 )
 from indigo.util import (
-    decode_meta,
-    default_cdmi_id,
     meta_cassandra_to_cdmi,
     meta_cdmi_to_cassandra,
-    merge,
     metadata_to_list,
+    merge,
     split,
-    datetime_serializer
 )
 from indigo.models.errors import (
     CollectionConflictError,
     ResourceConflictError,
     NoSuchCollectionError
 )
-from indigo.models.id_index import IDIndex
+
+# import json
+# from cassandra.cqlengine import (
+#     columns,
+#     connection
+# )
+# from cassandra.cqlengine.models import Model
+# import paho.mqtt.publish as publish
+# import logging
+# 
+# from indigo.models.group import Group
+# from indigo.models.resource import Resource
+# from indigo.models.search import SearchIndex
+# from indigo.models.acl import (
+#     Ace,
+#     acemask_to_str,
+#     cdmi_str_to_aceflag,
+#     str_to_acemask,
+#     cdmi_str_to_acemask,
+#     serialize_acl_metadata
+# )
+# from indigo.util import (
+#     decode_meta,
+#     default_cdmi_id,
+#     meta_cassandra_to_cdmi,
+#     meta_cdmi_to_cassandra,
+#     merge,
+#     metadata_to_list,
+#     split,
+#     datetime_serializer
+# )
 
 
-class Collection(Model):
+
+class Collection(object):
     """Collection model"""
-    id = columns.Text(default=default_cdmi_id, required=True)
-    container = columns.Text(primary_key=True, required=True)
-    name = columns.Text(primary_key=True, required=True)
-    metadata = columns.Map(columns.Text, columns.Text, index=True)
-    create_ts = columns.DateTime()
-    modified_ts = columns.DateTime()
-    is_root = columns.Boolean(default=False)
-    acl = columns.Map(columns.Text, columns.UserDefinedType(Ace))
 
-    # The access columns contain lists of group IDs that are allowed
-    # the specified permission. If the lists have at least one entry
-    # then access is restricted, if there are no entries in a particular
-    # list, then access is granted to all (authenticated users)
-#     read_access = columns.List(columns.Text)
-#     edit_access = columns.List(columns.Text)
-#     write_access = columns.List(columns.Text)
-#     delete_access = columns.List(columns.Text)
+    def __init__(self, entry):
+        self.entry = entry
+
+        self.is_root = (self.entry.name == "." and self.entry.container == '/')
+        # Get name
+        if self.is_root:
+            self.name = u"Home"
+        else:
+            _, self.name = split(self.entry.container)
+        self.metadata = self.entry.container_metadata
+        self.path = self.entry.container
+        self.parent, _ = split(self.path)
+        self._id = self.entry.container_id
+        self.create_ts = self.entry.container_create_ts
+        self.acl = self.entry.container_acl
+
 
     @classmethod
-    def create(cls, **kwargs):
-        """Create a new collection
-
-        We intercept the create call"""
-        # TODO: Allow name starting or ending with a space ?
-#         container = kwargs.get('container', '/').strip()
-#         name = kwargs.get('name').strip()
-#
-#         kwargs['name'] = name
-#         kwargs['container'] = container
-
-        name = kwargs.get('name')
-        container = kwargs.get('container', '/')
-        kwargs['container'] = container
-
-        d = datetime.now()
-        kwargs['create_ts'] = d
-        kwargs['modified_ts'] = d
-
-        if 'metadata' in kwargs:
-            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
-
+    def create(cls, name, container='/', metadata=None):
+        """Create a new collection"""
+        from indigo.models import Resource
+        path = merge(container, name)
         # Check if parent collection exists
-        parent = Collection.find_by_path(container)
-
+        parent = Collection.find(container)
         if parent is None:
             raise NoSuchCollectionError(container)
 
-        resource = Resource.find_by_path(merge(container, name))
-
+        #TODO: Check resource doesn't exist
+        resource = Resource.find(merge(container, name))
         if resource is not None:
             raise ResourceConflictError(container)
-        collection = Collection.find_by_path(merge(container, name))
 
+        collection = Collection.find(path)
         if collection is not None:
             raise CollectionConflictError(container)
+        
+        
+        if metadata:
+            metadata = meta_cdmi_to_cassandra(metadata)
+            
+        d = datetime.now()
+        coll_entry = TreeEntry.create(container=path,
+                                      name='.',
+                                      container_create_ts=d,
+                                      container_modified_ts=d)
+        coll_entry.save()
+        coll_entry.id = coll_entry.container_id
+        coll_entry.save()
+        
+        child_entry = TreeEntry.create(container=container,
+                                       name=name + '/',
+                                       id=coll_entry.container_id)
+        child_entry.save()
+        return Collection.find(path)
 
-        collection = super(Collection, cls).create(**kwargs)
-        state = collection.mqtt_get_state()
-        collection.mqtt_publish('create', {}, state)
-        # Index the collection
-        collection.index()
-        # Create a row in the ID index table
-        idx = IDIndex.create(id=collection.id,
-                             classname="indigo.models.collection.Collection",
-                             key=collection.path())
-        return collection
+
+    def create_acl(self, read_access, write_access):
+        self.entry.create_acl(read_access, write_access)
 
     @classmethod
     def create_root(cls):
         """Create the root container"""
         d = datetime.now()
-        root = Collection(container='null',
-                          name='Home',
-                          is_root=True,
-                          create_ts=d,
-                          modified_ts=d)
-        root.save()
-        root.add_default_acl()
-        return root
+        root_entry = TreeEntry.create(container='/',
+                                      name='.',
+                                      container_create_ts=d,
+                                      container_modified_ts=d)
+        root_entry.save()
+        root_entry.id = root_entry.container_id
+        root_entry.save()
+        
+        root_entry.add_default_acl()
+        return root_entry
 
-    def add_default_acl(self):
-        # Add read access to all authenticated users
-        self.update_acl(["AUTHENTICATED@"], [])
-
-    def delete_acl(self):
-        self.acl = None
-        self.save()
-
-    def mqtt_get_state(self):
-        payload = dict()
-        payload['id'] = self.id
-        payload['container'] = self.container
-        payload['name'] = self.name
-        payload['create_ts'] = self.create_ts
-        payload['modified_ts'] = self.modified_ts
-        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
-
-        return payload
-
-    def mqtt_publish(self, operation, pre_state, post_state):
-        payload = dict()
-        payload['pre'] = pre_state
-        payload['post'] = post_state
-        topic = u'{0}/collection{1}/{2}'.format(operation, self.container, self.name)
-        # Clean up the topic by removing superfluous slashes.
-        topic = '/'.join(filter(None, topic.split('/')))
-        # Remove MQTT wildcards from the topic. Corner-case: If the collection name is made entirely of # and + and a
-        # script is set to run on such a collection name. But that's what you get if you use stupid names for things.
-        topic = topic.replace('#', '').replace('+', '')
-        logging.info(u'Publishing on topic "{0}"'.format(topic))
-        try:
-            publish.single(topic, json.dumps(payload, default=datetime_serializer))
-        except:
-            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
-        state = self.mqtt_get_state()
-        self.mqtt_publish('delete', state, {})
-        idx = IDIndex.find(self.id)
-        if idx:
-            idx.delete()
-        SearchIndex2.reset(self.id)
-        super(Collection, self).delete()
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        query = SimpleStatement("""DELETE FROM tree_entry WHERE container=%s""")
+        session.execute(query, (self.path,))
+        # Get the row that describe the collection as a child of its parent
+        child = TreeEntry.objects.filter(container=self.parent,
+                                           name="{}/".format(self.name)).first()
+        if child:
+            child.delete()
+
 
     @classmethod
     def delete_all(cls, path):
         """Delete recursively all sub-collections and all resources contained
         in a collection at 'path'"""
-        parent = Collection.find_by_path(path)
+        from indigo.models import Resource
+        parent = Collection.find(path)
 
         if not parent:
             return
 
-        collections = list(parent.get_child_collections())
-        resources = list(parent.get_child_resources())
+        collections, resources = parent.get_child()
+        collections = [Collection.find(merge(path,c)) for c in collections]
+        resources = [Resource.find(merge(path,c)) for c in resources]
 
         for resource in resources:
             resource.delete()
-
+# 
         for collection in collections:
-            Collection.delete_all(collection.path())
+            Collection.delete_all(collection.path)
 
         parent.delete()
 
+
     @classmethod
     def find(cls, path):
-        """Return a collection from a path"""
-        return cls.find_by_path(path)
-
-    @classmethod
-    def find_by_id(cls, id_string):
-        """Return a collection from a uuid"""
-        idx = IDIndex.find(id_string)
-        if idx:
-#            if idx.classname == "indigo.models.collection.Collection":
-            if idx.classname.endswith("Collection"):
-                return cls.find(idx.key)
-        return None
-
-    @classmethod
-    def find_by_path(cls, path):
-        """Return a collection from a path"""
-        if path == '/':
-            return cls.get_root_collection()
-        container, name = split(path)
-        return cls.objects.filter(container=container, name=name).first()
-
-    @classmethod
-    def find_by_name(cls, name):
-        """Return a collection from a name"""
-        return cls.objects.filter(name=name).first()
-
-    @classmethod
-    def get_root_collection(cls):
-        """Return the root collection"""
-        return cls.objects.filter(container='null',name='Home').first()
-
-    def index(self):
-        SearchIndex2.reset(self.id)
-        SearchIndex2.index(self, ['name', 'metadata'])
-
-    def __unicode__(self):
-        return self.path()
-
-    def get_child_collections(self):
-        """Return a list of all sub-collections"""
-        return Collection.objects.filter(container=self.path()).all()
-
-    def get_child_collection_count(self):
-        """Return the number of sub-collections"""
-        return Collection.objects.filter(container=self.path()).count()
-
-    def get_child_resources(self):
-        """Return a list of all resources"""
-        return Resource.objects.filter(container=self.path()).all()
-
-    def get_child_resource_count(self):
-        """Return the number of resources"""
-        return Resource.objects.filter(container=self.path()).count()
-
-    def get_metadata(self):
-        """Return a dictionary of metadata"""
-        return meta_cassandra_to_cdmi(self.metadata)
-
-    def get_metadata_key(self, key):
-        """Return the value of a metadata"""
-        return decode_meta(self.metadata.get(key, ""))
-
-    def get_parent_collection(self):
-        """Return the parent collection"""
-        return Collection.find_by_path(self.container)
-
-    def get_acl_metadata(self):
-        """Return a dictionary of acl based on the Collection schema"""
-        return serialize_acl_metadata(self)
-
-    def md_to_list(self):
-        """Transform metadata to a list of couples for web ui"""
-        return metadata_to_list(self.metadata)
-
-    def path(self):
-        """Return the full path of the collection"""
-        if self.is_root:
-            return u"/"
+        entries = TreeEntry.objects.filter(container=path, name=".")
+        if not entries:
+            return None
         else:
-            return merge(self.container, self.name)
+            return cls(entries.first())
 
-    def read_acl(self):
-        """Return two list of groups id which have read and write access"""
-        read_access = []
-        write_access = []
-        for gid, ace in self.acl.items():
-            op = acemask_to_str(ace.acemask, False)
-            if op == "read":
-                read_access.append(gid)
-            elif op == "write":
-                write_access.append(gid)
-            elif op == "read/write":
-                read_access.append(gid)
-                write_access.append(gid)
-            else:
-                # Unknown combination
-                pass
-            
-        return read_access, write_access
-
-    def to_dict(self, user=None):
-        """Return a dictionary which describes a collection for the web ui"""
-        data = {
-            "id": self.id,
-            "container": self.container,
-            "name": self.name,
-            "path": self.path(),
-            "created": self.create_ts,
-            "metadata": self.md_to_list()
-        }
-        if user:
-            data['can_read'] = self.user_can(user, "read")
-            data['can_write'] = self.user_can(user, "write")
-            data['can_edit'] = self.user_can(user, "edit")
-            data['can_delete'] = self.user_can(user, "delete")
-        return data
-
-    def update(self, **kwargs):
-        """Update a collection"""
-        pre_state = self.mqtt_get_state()
-        kwargs['modified_ts'] = datetime.now()
-        pre_id = self.id
-
-        if 'metadata' in kwargs:
-            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
-
-        super(Collection, self).update(**kwargs)
-
-        post_state = self.mqtt_get_state()
-
-#         # Update id
-#         if 'id' in kwargs:
-#             if pre_id:
-#                 idx = IDIndex.find(pre_id)
-#                 if idx:
-#                     idx.delete()
-#             idx = IDIndex.create(id=self.id,
-#                                  classname="indigo.models.collection.Collection",
-#                                  key=self.path())
-        self.index()
-
-        if pre_state['metadata'] == post_state['metadata']:
-            self.mqtt_publish('update_object', pre_state, post_state)
-        else:
-            self.mqtt_publish('update_metadata', pre_state, post_state)
-        return self
-
-
-    def create_acl(self, read_access, write_access):
-        self.acl = {}
-
-        self.save()
-        self.update_acl(read_access, write_access)
-
-    def update_acl(self, read_access, write_access):
-        """Replace the acl with the given list of access.
-
-        read_access: a list of groups id that have read access for this
-                     collection
-        write_access: a list of groups id that have write access for this
-                     collection
-
-        """
-        # The dictionary keys are the groups id for which we have an ACE
-        # We don't use aceflags yet, everything will be inherited by lower
-        # sub-collections
-        # acemask is set with helper (read/write - see indigo/models/acl/py)
-        cfg = get_config(None)
-        keyspace = cfg.get('KEYSPACE', 'indigo')
-        access = {}
-        for gid in read_access:
-            access[gid] = "read"
-        for gid in write_access:
-            if gid in access:
-                access[gid] = "read/write"
-            else:
-                access[gid] = "write"
-        ls_access = []
-        for gid in access:
-            g = Group.find_by_id(gid)
-            if g:
-                ident = g.name
-            elif gid.upper() == "AUTHENTICATED@":
-                ident = "AUTHENTICATED@"
-            else:
-                # TODO log or return error if the identifier isn't found ?
-                continue
-            s = ("'{}': {{"
-                 "acetype: 'ALLOW', "
-                 "identifier: '{}', "
-                 "aceflags: {}, "
-                 "acemask: {}"
-                 "}}").format(gid, ident, 0, str_to_acemask(access[gid], False))
-            ls_access.append(s)
-        acl = "{{{}}}".format(", ".join(ls_access))
-        query= ("UPDATE {}.collection SET acl = acl + {}"
-                "WHERE container='{}' AND name='{}'").format(
-            keyspace,
-            acl,
-            self.container.replace("'", "\''"),
-            self.name.replace("'", "\''"))
-        connection.execute(query)
-
-    def update_cdmi_acl(self, cdmi_acl):
-        """Update acl with the metadata acl passed with a CDMI request"""
-        cfg = get_config(None)
-        keyspace = cfg.get('KEYSPACE', 'indigo')
-        ls_access = []
-        for cdmi_ace in cdmi_acl:
-            if 'identifier' in cdmi_ace:
-                gid = cdmi_ace['identifier']
-            else:
-                # Wrong syntax for the ace
-                continue
-            g = Group.find(gid)
-            if g:
-                ident = g.name
-            elif gid.upper() == "AUTHENTICATED@":
-                ident = "AUTHENTICATED@"
-            else:
-                # TODO log or return error if the identifier isn't found ?
-                continue
-            s = ("'{}': {{"
-                 "acetype: '{}', "
-                 "identifier: '{}', "
-                 "aceflags: {}, "
-                 "acemask: {}"
-                 "}}").format(g.id,
-                              cdmi_ace['acetype'].upper(),
-                              ident,
-                              cdmi_str_to_aceflag(cdmi_ace['aceflags']),
-                              cdmi_str_to_acemask(cdmi_ace['acemask'], False)
-                             )
-            ls_access.append(s)
-        acl = "{{{}}}".format(", ".join(ls_access))
-        query= ("UPDATE {}.collection SET acl = acl + {}"
-                "WHERE container='{}' AND name='{}'").format(
-            keyspace,
-            acl,
-            self.container.replace("'", "\'"),
-            self.name.replace("'", "\'"))
-        connection.execute(query)
 
     def get_authorized_actions(self, user):
         """"Get available actions for user according to a group"""
@@ -454,7 +202,7 @@ class Collection(Model):
             if self.is_root:
                 return set([])
             else:
-                parent_container = Collection.find(self.container)
+                parent_container = Collection.find(self.parent)
                 return parent_container.get_authorized_actions(user)
         actions = set([])
         for gid in user.groups + ["AUTHENTICATED@"]:
@@ -474,6 +222,78 @@ class Collection(Model):
                     actions.add("edit")
         return actions
 
+
+    def get_child(self):
+        """Return two lists for child container and child dataobjects"""
+        entries = TreeEntry.objects.filter(container=self.path)
+        child_container = []
+        child_dataobject = []
+        for entry in list(entries):
+            if entry.name == '.':
+                continue
+            elif entry.name.endswith('/'):
+                child_container.append(entry.name[:-1])
+            else:
+                child_dataobject.append(entry.name)
+        return (child_container , child_dataobject)
+
+
+    def get_metadata(self):
+        """Return a dictionary of metadata"""
+        return meta_cassandra_to_cdmi(self.metadata)
+
+
+    def md_to_list(self):
+        """Transform metadata to a list of couples for web ui"""
+        return metadata_to_list(self.metadata)
+ 
+    def read_acl(self):
+        """Return two list of groups id which have read and write access"""
+        read_access = []
+        write_access = []
+        for gid, ace in self.acl.items():
+            op = acemask_to_str(ace.acemask, False)
+            if op == "read":
+                read_access.append(gid)
+            elif op == "write":
+                write_access.append(gid)
+            elif op == "read/write":
+                read_access.append(gid)
+                write_access.append(gid)
+            else:
+                # Unknown combination
+                pass
+        return read_access, write_access
+
+
+    def to_dict(self, user=None):
+        """Return a dictionary which describes a collection for the web ui"""
+        data = {
+            "id": self._id,
+            "container": self.path,
+            "name": self.name,
+            "path": self.path,
+            "created": self.create_ts,
+            "metadata": self.md_to_list()
+        }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+        return data
+
+
+    def update(self, **kwargs):
+        """Update a collection"""
+        kwargs['container_modified_ts'] = datetime.now()
+        if 'metadata' in kwargs:
+            kwargs['container_metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+            del kwargs['metadata']
+        self.entry.update(**kwargs)
+        return self
+
+
     def user_can(self, user, action):
         """
         User can perform the action if any of the user's group IDs
@@ -486,3 +306,129 @@ class Collection(Model):
         if action in actions:
             return True
         return False
+
+#     def index(self):
+#         SearchIndex.reset(self.id)
+#         SearchIndex.index(self, ['name', 'metadata'])
+# 
+# 
+#     def get_child_collections(self):
+#         """Return a list of all sub-collections"""
+#         return Collection.objects.filter(container=self.path()).all()
+# 
+#     def get_child_collection_count(self):
+#         """Return the number of sub-collections"""
+#         return Collection.objects.filter(container=self.path()).count()
+# 
+#     def get_child_resources(self):
+#         """Return a list of all resources"""
+#         return Resource.objects.filter(container=self.path()).all()
+# 
+#     def get_child_resource_count(self):
+#         """Return the number of resources"""
+#         return Resource.objects.filter(container=self.path()).count()
+# 
+#     def get_metadata(self):
+#         """Return a dictionary of metadata"""
+#         return meta_cassandra_to_cdmi(self.metadata)
+# 
+#     def get_metadata_key(self, key):
+#         """Return the value of a metadata"""
+#         return decode_meta(self.metadata.get(key, ""))
+# 
+# 
+#     def get_acl_metadata(self):
+#         """Return a dictionary of acl based on the Collection schema"""
+#         return serialize_acl_metadata(self)
+# 
+# 
+# 
+#     def update_acl(self, read_access, write_access):
+#         """Replace the acl with the given list of access.
+# 
+#         read_access: a list of groups id that have read access for this
+#                      collection
+#         write_access: a list of groups id that have write access for this
+#                      collection
+# 
+#         """
+#         # The dictionary keys are the groups id for which we have an ACE
+#         # We don't use aceflags yet, everything will be inherited by lower
+#         # sub-collections
+#         # acemask is set with helper (read/write - see indigo/models/acl/py)
+#         cfg = get_config(None)
+#         keyspace = cfg.get('KEYSPACE', 'indigo')
+#         access = {}
+#         for gid in read_access:
+#             access[gid] = "read"
+#         for gid in write_access:
+#             if gid in access:
+#                 access[gid] = "read/write"
+#             else:
+#                 access[gid] = "write"
+#         ls_access = []
+#         for gid in access:
+#             g = Group.find_by_id(gid)
+#             if g:
+#                 ident = g.name
+#             elif gid.upper() == "AUTHENTICATED@":
+#                 ident = "AUTHENTICATED@"
+#             else:
+#                 # TODO log or return error if the identifier isn't found ?
+#                 continue
+#             s = ("'{}': {{"
+#                  "acetype: 'ALLOW', "
+#                  "identifier: '{}', "
+#                  "aceflags: {}, "
+#                  "acemask: {}"
+#                  "}}").format(gid, ident, 0, str_to_acemask(access[gid], False))
+#             ls_access.append(s)
+#         acl = "{{{}}}".format(", ".join(ls_access))
+#         query= ("UPDATE {}.collection SET acl = acl + {}"
+#                 "WHERE container='{}' AND name='{}'").format(
+#             keyspace,
+#             acl,
+#             self.container.replace("'", "\''"),
+#             self.name.replace("'", "\''"))
+#         connection.execute(query)
+# 
+#     def update_cdmi_acl(self, cdmi_acl):
+#         """Update acl with the metadata acl passed with a CDMI request"""
+#         cfg = get_config(None)
+#         keyspace = cfg.get('KEYSPACE', 'indigo')
+#         ls_access = []
+#         for cdmi_ace in cdmi_acl:
+#             if 'identifier' in cdmi_ace:
+#                 gid = cdmi_ace['identifier']
+#             else:
+#                 # Wrong syntax for the ace
+#                 continue
+#             g = Group.find(gid)
+#             if g:
+#                 ident = g.name
+#             elif gid.upper() == "AUTHENTICATED@":
+#                 ident = "AUTHENTICATED@"
+#             else:
+#                 # TODO log or return error if the identifier isn't found ?
+#                 continue
+#             s = ("'{}': {{"
+#                  "acetype: '{}', "
+#                  "identifier: '{}', "
+#                  "aceflags: {}, "
+#                  "acemask: {}"
+#                  "}}").format(g.id,
+#                               cdmi_ace['acetype'].upper(),
+#                               ident,
+#                               cdmi_str_to_aceflag(cdmi_ace['aceflags']),
+#                               cdmi_str_to_acemask(cdmi_ace['acemask'], False)
+#                              )
+#             ls_access.append(s)
+#         acl = "{{{}}}".format(", ".join(ls_access))
+#         query= ("UPDATE {}.collection SET acl = acl + {}"
+#                 "WHERE container='{}' AND name='{}'").format(
+#             keyspace,
+#             acl,
+#             self.container.replace("'", "\'"),
+#             self.name.replace("'", "\'"))
+#         connection.execute(query)
+

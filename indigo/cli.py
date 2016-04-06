@@ -155,7 +155,7 @@ def main():
     args = parse_arguments()
     cfg = get_config(args.config)
 
-    initialise(cfg.get('KEYSPACE', 'indigo'),
+    initialise(keyspace=cfg.get('KEYSPACE', 'indigo'),
                hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
                repl_factor=cfg.get('REPLICATION_FACTOR', 1))
 

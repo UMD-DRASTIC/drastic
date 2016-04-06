@@ -27,7 +27,7 @@ from indigo.models.blob import Blob
 from indigo.models.collection import Collection
 from indigo.models.errors import (ResourceConflictError, NoSuchCollectionError)
 from indigo.models.resource import Resource
-from indigo.models.search2 import SearchIndex2
+from indigo.models.search import SearchIndex
 from socket import error as SocketError
 
 
@@ -102,8 +102,8 @@ class LinkWriter(writer):
             print  url, p1, n1
             raise
 
-        SearchIndex2.reset(resource.id)
-        SearchIndex2.index(resource, ['name', 'metadata'])
+        SearchIndex.reset(resource.id)
+        SearchIndex.index(resource, ['name', 'metadata'])
 
 
 ########### function to create embedded object

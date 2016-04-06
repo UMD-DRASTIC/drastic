@@ -33,16 +33,6 @@ occur when writing to the database, such as UniqueError to be raised when an
 attempt is made to write a new Collection with the name of an existing one.
 
 
-### Drivers 
-
-The shared drivers (```indigo.drivers.CassandraDriver``` and ```indigo.drivers.FileSystemDriver```) provide functions for returning a previous added file in chunks.  The drivers are loaded by called ```indigo.drivers.get_driver()``` and passing either a cassandra:// URL or a file:// URL. By default the chunk size is 1Mb.
-
-
-### Metadata Validation
-
-The ```indigo.metadata.MetadataValidator``` class provides a mechanism for validating collection/resource metadata when submitted via a webform.  Once the CDMI layer is complete it is expected that it will use the same mechanism.
-
-
 ## Command Line Interface 
 
 Whenever indigo is installed in a sub-component's virtualenv, the indigo command is available from inside the activated virtualenv to interact with the system.  

@@ -29,54 +29,57 @@ from cassandra.cqlengine.models import Model
 import logging
 
 from indigo.util import default_uuid
-
+from indigo.models.id_search import IDSearch
 
 class SearchIndex(Model):
     """SearchIndex Model"""
-    id = columns.Text(primary_key=True, default=default_uuid)
-    term = columns.Text(required=True)
-    term_type = columns.Text(required=True)
-    object_type = columns.Text(required=True)
+    term = columns.Text(required=True, primary_key=True)
+    term_type = columns.Text(required=True, primary_key=True)
+    object_path = columns.Text(required=True, primary_key=True)
     object_id = columns.Text(required=True)
+    object_type = columns.Text(required=True)
+    id = columns.Text(default=default_uuid)
 
     @classmethod
+    def create(cls, **kwargs):
+        """Create a new indexed term"""
+        idx = super(SearchIndex, cls).create(**kwargs)
+
+        # Create a row in the ID search table
+        idx = IDSearch.create(object_path=idx.object_path,
+                              term=idx.term,
+                              term_type=idx.term_type)
+        return idx
+    
+    @classmethod
     def find(cls, termstrings, user):
-        """Search for terms in the archive"""
-        # termstrings should have been lower cased and cleaned
         from indigo.models.collection import Collection
         from indigo.models.resource import Resource
-        from indigo.models.search2 import SearchIndex2
 
         def get_object(obj, user):
             """Return the object corresponding to the SearchIndex object"""
             if obj.object_type == 'Collection':
-                result_obj = Collection.find_by_id(obj.object_id)
+                result_obj = Collection.find(obj.object_path)
                 if not result_obj or not result_obj.user_can(user, "read"):
                     return None
-
                 result_obj = result_obj.to_dict(user)
                 result_obj['result_type'] = 'Collection'
                 return result_obj
             elif obj.object_type == 'Resource':
-                result_obj = Resource.find_by_id(obj.object_id)
+                result_obj = Resource.find(obj.object_path)
                 # Check the resource's collection for read permission
                 if not result_obj or not result_obj.user_can(user, "read"):
                     return None
-
                 result_obj = result_obj.to_dict(user)
                 result_obj['result_type'] = 'Resource'
                 return result_obj
-
             return None
-
-        #terms = [t for t in termstrings if not cls.is_stop_word(t)]
 
         result_objects = []
         for t in termstrings:
             if cls.is_stop_word(t):
                 continue
             result_objects.extend(cls.objects.filter(term=t).all())
-            result_objects.extend(SearchIndex2.objects.filter(term=t).all())
 
         results = []
         for result in result_objects:
@@ -88,8 +91,7 @@ class SearchIndex(Model):
                                 result.term,
                                 result.object_type,
                                 result.object_id))
-            result.delete()
-        #results = filter(lambda x: x, results)
+
         results = [x for x in results if x]
 
         # Do some sane ordering here to group together by ID and
@@ -105,7 +107,6 @@ class SearchIndex(Model):
             match = matches[0]
             match['hit_count'] = len(matches)
             result_list.append(match)
-        
 
         return sorted(result_list,
                       key=lambda res: res.get('hit_count', 0),
@@ -120,11 +121,16 @@ class SearchIndex(Model):
                         "to"]
 
     @classmethod
-    def reset(cls, id):
+    def reset(cls, object_path):
         """Delete objects from the SearchIndex"""
-        # Have to delete one at a time without a partition index.
-        for obj in cls.objects.filter(object_id=id).all():
-            obj.delete()
+        rows = IDSearch.find(object_path)
+        for id_obj in rows:
+            obj = cls.objects.filter(term=id_obj.term,
+                                     term_type=id_obj.term_type,
+                                     object_path=id_obj.object_path).first()
+            if obj:
+                obj.delete()
+            id_obj.delete()
 
     @classmethod
     def index(cls, object, fields=['name']):
@@ -167,6 +173,7 @@ class SearchIndex(Model):
             else:
                 terms.extend([(f, el) for el in clean(attr)])
                 terms.append((f, clean_full(attr)))
+        
 
         object_type = object.__class__.__name__
         for term_type, term in terms:
@@ -175,12 +182,11 @@ class SearchIndex(Model):
             if len(term) < 2:
                 continue
             SearchIndex.create(term=term,
-                               term_type=term_type,
-                               object_type=object_type,
-                               object_id=object.id)
+                                term_type=term_type,
+                                object_type=object_type,
+                                object_path=object.path)
             result_count += 1
         return result_count
-
 
     def __unicode__(self):
         return unicode("".format(self.term, self.object_type))

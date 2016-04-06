@@ -16,396 +16,140 @@ limitations under the License.
 """
 
 from datetime import datetime
-import json
 import logging
-from cassandra.cqlengine import (
-    columns,
-    connection
-)
-from cassandra.cqlengine.models import Model
-from paho.mqtt import publish
+from cassandra.cqlengine import connection
+from cassandra.query import SimpleStatement
 
 from indigo import get_config
-from indigo.models.errors import (
-    NoSuchCollectionError,
-    ResourceConflictError
+from indigo.models import (
+    DataObject,
+    TreeEntry
 )
-from indigo.models.group import Group
 from indigo.models.acl import (
-    Ace,
     acemask_to_str,
-    cdmi_str_to_aceflag,
-    str_to_acemask,
-    cdmi_str_to_acemask,
-    serialize_acl_metadata
 )
 from indigo.util import (
-    decode_meta,
-    default_cdmi_id,
-    meta_cassandra_to_cdmi,
-    meta_cdmi_to_cassandra,
     merge,
-    metadata_to_list,
+    meta_cdmi_to_cassandra,
+    meta_cassandra_to_cdmi,
     split,
-    datetime_serializer
 )
-from indigo.models.id_index import IDIndex
-from indigo.models.search2 import SearchIndex2
+# import json
+# from cassandra.cqlengine import (
+#     columns,
+#     connection
+# )
+# from cassandra.cqlengine.models import Model
+# from paho.mqtt import publish
+# 
+# from indigo import get_config
+# from indigo.models.errors import (
+#     NoSuchCollectionError,
+#     ResourceConflictError
+# )
+# from indigo.models.group import Group
+# from indigo.models.acl import (
+#     Ace,
+#     acemask_to_str,
+#     cdmi_str_to_aceflag,
+#     str_to_acemask,
+#     cdmi_str_to_acemask,
+#     serialize_acl_metadata
+# )
+# from indigo.util import (
+#     decode_meta,
+#     default_cdmi_id,
+#     meta_cassandra_to_cdmi,
+#     meta_cdmi_to_cassandra,
+#     merge,
+#     metadata_to_list,
+#     split,
+#     datetime_serializer
+# )
+# from indigo.models.search import SearchIndex
+# 
+# import indigo.drivers
 
-import indigo.drivers
 
-
-class Resource(Model):
+class Resource(object):
     """Resource Model"""
-    id = columns.Text(default=default_cdmi_id, required=True)
-    container = columns.Text(primary_key=True, required=True)
-    name = columns.Text(primary_key=True, required=True)
-    checksum = columns.Text(required=False)
-    size = columns.BigInt(required=False, default=0)
-    metadata = columns.Map(columns.Text, columns.Text, index=True)
-    mimetype = columns.Text(required=False)
-    url = columns.Text(required=False)
-    alt_url = columns.Set(columns.Text, required=False)
-    create_ts = columns.DateTime()
-    modified_ts = columns.DateTime()
-    type = columns.Text(required=False, default='UNKNOWN')
-    acl = columns.Map(columns.Text, columns.UserDefinedType(Ace))
 
-    # The access columns contain lists of group IDs that are allowed
-    # the specified permission. If the lists have at least one entry
-    # then access is restricted, if there are no entries in a particular
-    # list, then access is granted to all (authenticated users)
-#     read_access = columns.List(columns.Text)
-#     edit_access = columns.List(columns.Text)
-#     write_access = columns.List(columns.Text)
-#     delete_access = columns.List(columns.Text)
 
     logger = logging.getLogger('database')
 
+    def __init__(self, entry, obj=None):
+        self.entry = entry
+        self.obj = obj
+        
+        # Tree metadata
+        self.tree_metadata = meta_cassandra_to_cdmi(self.entry.metadata)
+        # Object metadata, only populated when needed as it requires an extra
+        # Cassandra request
+        self.metadata = None
+        self.acl = self.entry.container_acl
+        self._id = self.entry.id
+        self.name = self.entry.name
+        self.container = self.entry.container
+        self.path = self.entry.path()
+        self.url = self.entry.url
+        self.mimetype = self.tree_metadata.get("cdmi_mimetype", "")
+        self.is_reference = not self.url.startswith("cassandra://")
+
+
+
     @classmethod
-    def create(cls, **kwargs):
-        """Create a new resource
+    def create(cls, container, name, id, metadata=None, url=None, mimetype=None):
+        from indigo.models import Collection
+        create_ts = datetime.now()
+        modified_ts = create_ts
+        path = merge(container, name)
 
-        When we create a resource, the minimum we require is a name
-        and a container. There is little chance of getting trustworthy
-        versions of any of the other data at creation stage.
-        """
-
-        # TODO: Allow name starting or ending with a space ?
-#         kwargs['name'] = kwargs['name'].strip()
-        kwargs['create_ts'] = datetime.now()
-        kwargs['modified_ts'] = kwargs['create_ts']
-
-        if 'metadata' in kwargs:
-            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+        if metadata:
+            metadata = meta_cdmi_to_cassandra(metadata)
 
         # Check the container exists
-        from indigo.models.collection import Collection
-        collection = Collection.find_by_path(kwargs['container'])
+        collection = Collection.find(container)
 
         if not collection:
-            raise NoSuchCollectionError(kwargs['container'])
+            raise NoSuchCollectionError(container)
 
         # Make sure parent/name are not in use.
-        existing = cls.objects.filter(container=kwargs['container'],
-                                      name=kwargs['name']).first()
+        existing = cls.find(path)
         if existing:
-            raise ResourceConflictError(merge(kwargs['container'],
-                                              kwargs['name']))
+            raise ResourceConflictError(path)
 
-        resource = super(Resource, cls).create(**kwargs)
-        state = resource.mqtt_get_state()
-        resource.mqtt_publish('create', {}, state)
-        resource.index()
-        # Create a row in the ID index table
-        idx = IDIndex.create(id=resource.id,
-                             classname="indigo.models.resource.Resource",
-                             key=resource.path())
+        d = datetime.now()
+        data_entry = TreeEntry.create(container=container,
+                                      name=name,
+                                      container_create_ts=d,
+                                      container_modified_ts=d,
+                                      url=url,
+                                      id=id,
+                                      mimetype=mimetype)
+        data_entry.save()
+        return data_entry
 
-        return resource
-
-    def mqtt_get_state(self):
-        payload = dict()
-        payload['id'] = self.id
-        payload['url'] = self.url
-        payload['container'] = self.container
-        payload['name'] = self.get_name()
-        payload['create_ts'] = self.create_ts
-        payload['modified_ts'] = self.modified_ts
-        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
-
-        return payload
-
-    def mqtt_publish(self, operation, pre_state, post_state):
-        payload = dict()
-        payload['pre'] = pre_state
-        payload['post'] = post_state
-        topic = u'{0}/resource{1}/{2}'.format(operation, self.container, self.get_name())
-        # Clean up the topic by removing superfluous slashes.
-        topic = '/'.join(filter(None, topic.split('/')))
-        # Remove MQTT wildcards from the topic. Corner-case: If the resource name is made entirely of # and + and a
-        # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
-        topic = topic.replace('#', '').replace('+', '')
-        logging.info(u'Publishing on topic "{0}"'.format(topic))
-        try:
-            publish.single(topic, json.dumps(payload, default=datetime_serializer))
-        except:
-            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
     def delete(self):
-        if self.url.startswith("cassandra://"):
-            driver = indigo.drivers.get_driver(self.url)
-            driver.delete_blob()
-        state = self.mqtt_get_state()
-        self.mqtt_publish('delete', state, {})
-        idx = IDIndex.find(self.id)
-        if idx:
-            idx.delete()
-        SearchIndex2.reset(self.id)
-        super(Resource, self).delete()
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        query = SimpleStatement("""DELETE FROM data_object WHERE id=%s""")
+        session.execute(query, (self._id,))
+        self.entry.delete()
+
 
     @classmethod
     def find(cls, path):
         """Return a resource from a path"""
-        return cls.find_by_path(path)
-
-    @classmethod
-    def find_by_id(cls, id_string):
-        """Return a resource from a uuid"""
-        idx = IDIndex.find(id_string)
-        if idx:
-#            if idx.classname == "indigo.models.resource.Resource":
-            if idx.classname.endswith("Resource"):
-                return cls.find(idx.key)
-        return None
-
-    @classmethod
-    def find_by_path(cls, path):
-        """Find resource by path"""
         coll_name, resc_name = split(path)
-        return cls.objects.filter(container=coll_name, name=resc_name).first()
-
-    def __unicode__(self):
-        return self.path()
-
-    def get_acl_metadata(self):
-        """Return a dictionary of acl based on the Resource schema"""
-        return serialize_acl_metadata(self)
-
-    def get_container(self):
-        """Returns the parent collection of the resource"""
-        # Check the container exists
-        from indigo.models.collection import Collection
-        container = Collection.find_by_path(self.container)
-        if not container:
-            raise NoSuchCollectionError(self.container)
+        entries = TreeEntry.objects.filter(container=coll_name, name=resc_name)
+        if not entries:
+            return None
         else:
-            return container
+            return cls(entries.first())
 
-    def get_metadata(self):
-        """Return a dictionary of metadata"""
-        return meta_cassandra_to_cdmi(self.metadata)
-
-    def get_metadata_key(self, key):
-        """Return the value of a metadata"""
-        return decode_meta(self.metadata.get(key, ""))
-
-    def get_name(self):
-        """Return the name of a resource. If the resource is a reference we
-        append a trailing '?' on the resource name"""
-        # References are object whose url doesn't start with 'cassandra://'
-        if self.is_reference():
-            return "{}?".format(self.name)
-        else:
-            return self.name
-
-    def index(self):
-        SearchIndex2.reset(self.id)
-        SearchIndex2.index(self, ['name', 'metadata', 'mimetype'])
-
-    def is_reference(self):
-        return not self.url.startswith("cassandra://")
-
-    def md_to_list(self):
-        """Transform metadata to a list of couples for web ui"""
-        return metadata_to_list(self.metadata)
-
-    def path(self):
-        """Return the full path of the resource"""
-        return merge(self.container, self.name)
-
-    def read_acl(self):
-        """Return two list of groups id which have read and write access"""
-        read_access = []
-        write_access = []
-        for gid, ace in self.acl.items():
-            op = acemask_to_str(ace.acemask, True)
-            if op == "read":
-                read_access.append(gid)
-            elif op == "write":
-                write_access.append(gid)
-            elif op == "read/write":
-                read_access.append(gid)
-                write_access.append(gid)
-            else:
-                # Unknown combination
-                pass
-            
-        return read_access, write_access
-
-    def to_dict(self, user=None):
-        """Return a dictionary which describes a resource for the web ui"""
-        data = {
-            "id": self.id,
-            "name": self.get_name(),
-            "container": self.container,
-            "path": self.path(),
-            "checksum": self.checksum,
-            "size": self.size,
-            "metadata": self.md_to_list(),
-            "create_ts": self.create_ts,
-            "modified_ts": self.modified_ts,
-            "mimetype": self.mimetype or "application/octet-stream",
-            "type": self.type,
-            "url": self.url,
-            "is_reference": self.is_reference()
-        }
-        if user:
-            data['can_read'] = self.user_can(user, "read")
-            data['can_write'] = self.user_can(user, "write")
-            data['can_edit'] = self.user_can(user, "edit")
-            data['can_delete'] = self.user_can(user, "delete")
-        return data
-
-    def update(self, **kwargs):
-        """Update a resource"""
-        pre_state = self.mqtt_get_state()
-        kwargs['modified_ts'] = datetime.now()
-        pre_id = self.id
-
-        if 'metadata' in kwargs:
-            kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
-
-        super(Resource, self).update(**kwargs)
-
-        post_state = self.mqtt_get_state()
-
-        # Update id
-#         if 'id' in kwargs:
-#             if pre_id:
-#                 idx = IDIndex.find(pre_id)
-#                 if idx:
-#                     idx.delete()
-#             idx = IDIndex.create(id=self.id,
-#                                  classname="indigo.models.resource.Resource",
-#                                  key=self.path())
-
-        if pre_state['metadata'] == post_state['metadata']:
-            self.mqtt_publish('update_object', pre_state, post_state)
-        else:
-            self.mqtt_publish('update_metadata', pre_state, post_state)
-        
-        self.index()
-
-        # TODO: If we update the url we need to delete the blob
-
-        return self
-
-    def create_acl(self, read_access, write_access):
-        self.acl = {}
-        self.save()
-        self.update_acl(read_access, write_access)
-
-    def update_acl(self, read_access, write_access):
-        """Replace the acl with the given list of access.
-
-        read_access: a list of groups id that have read access for this
-                     collection
-        write_access: a list of groups id that have write access for this
-                     collection
-
-        """
-        cfg = get_config(None)
-        keyspace = cfg.get('KEYSPACE', 'indigo')
-        # The ACL we construct will replace the existing one
-        # The dictionary keys are the groups id for which we have an ACE
-        # We don't use aceflags yet, everything will be inherited by lower
-        # sub-collections
-        # acemask is set with helper (read/write - see indigo/models/acl/py)
-        access = {}
-        for gid in read_access:
-            access[gid] = "read"
-        for gid in write_access:
-            if gid in access:
-                access[gid] = "read/write"
-            else:
-                access[gid] = "write"
-        
-        ls_access = []
-        for gid in access:
-            g = Group.find_by_id(gid)
-            if g:
-                ident = g.name
-            elif gid.upper() == "AUTHENTICATED@":
-                ident = "AUTHENTICATED@"
-            else:
-                # TODO log or return error if the identifier isn't found ?
-                continue
-            s = ("'{}': {{"
-                 "acetype: 'ALLOW', "
-                 "identifier: '{}', "
-                 "aceflags: {}, "
-                 "acemask: {}"
-                 "}}").format(gid, ident, 0, str_to_acemask(access[gid], True))
-            ls_access.append(s)
-        acl = "{{{}}}".format(", ".join(ls_access))
-        query= ("UPDATE {}.resource SET acl = acl + {}"
-                "WHERE container='{}' AND name='{}'").format(
-            keyspace,
-            acl,
-            self.container.replace("'", "\''"),
-            self.name.replace("'", "\''"))
-        connection.execute(query)
-
-    def update_cdmi_acl(self, cdmi_acl):
-        """Update acl with the metadata acl passed with a CDMI request"""
-        cfg = get_config(None)
-        keyspace = cfg.get('KEYSPACE', 'indigo')
-        ls_access = []
-        for cdmi_ace in cdmi_acl:
-            if 'identifier' in cdmi_ace:
-                gid = cdmi_ace['identifier']
-            else:
-                # Wrong syntax for the ace
-                continue
-            g = Group.find(gid)
-            if g:
-                ident = g.name
-            elif gid.upper() == "AUTHENTICATED@":
-                ident = "AUTHENTICATED@"
-            else:
-                # TODO log or return error if the identifier isn't found ?
-                continue
-            s = ("'{}': {{"
-                 "acetype: '{}', "
-                 "identifier: '{}', "
-                 "aceflags: {}, "
-                 "acemask: {}"
-                 "}}").format(g.id,
-                              cdmi_ace['acetype'].upper(),
-                              ident,
-                              cdmi_str_to_aceflag(cdmi_ace['aceflags']),
-                              cdmi_str_to_acemask(cdmi_ace['acemask'], True)
-                             )
-            ls_access.append(s)
-        acl = "{{{}}}".format(", ".join(ls_access))
-        query= ("UPDATE {}.resource SET acl = acl + {}"
-                "WHERE container='{}' AND name='{}'").format(
-            keyspace,
-            acl,
-            self.container.replace("'", "\''"),
-            self.name.replace("'", "\''"))
-        connection.execute(query)
 
     def get_authorized_actions(self, user):
         """"Get available actions for user according to a group"""
@@ -433,6 +177,95 @@ class Resource(Model):
                     actions.add("edit")
         return actions
 
+
+    def get_metadata(self):
+        self.get_obj()
+        return meta_cassandra_to_cdmi(self.entry.metadata)
+
+
+    def get_obj(self):
+        if not self.obj:
+            self.obj = DataObject.find(self._id)
+
+
+    def simple_dict(self, user=None):
+        """Return a dictionary which describes a resource for the web ui"""
+        data = {
+            "id": self._id,
+            "name": self.name,
+            "container": self.container,
+            "path": self.path,
+            "is_reference": self.is_reference,
+            "mimetype": self.mimetype or "application/octet-stream",
+            "type": self.mimetype,
+        }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+        return data
+
+    def full_dict(self, user=None):
+        """Return a dictionary which describes a resource for the web ui"""
+        self.get_obj()
+        data = {
+            "id": self._id,
+            "name": self.name,
+            "container": self.container,
+            "path": self.path,
+            "checksum": self.obj.checksum,
+            "size": self.obj.size,
+            "metadata": self.get_metadata(),
+            "create_ts": self.obj.create_ts,
+            "modified_ts": self.obj.modified_ts,
+            "url": self.url,
+            "is_reference": self.is_reference,
+            "mimetype": self.mimetype or "application/octet-stream",
+            "type": self.mimetype,
+        }
+        if user:
+            data['can_read'] = self.user_can(user, "read")
+            data['can_write'] = self.user_can(user, "write")
+            data['can_edit'] = self.user_can(user, "edit")
+            data['can_delete'] = self.user_can(user, "delete")
+        return data
+
+
+    def read_acl(self):
+        """Return two list of groups id which have read and write access"""
+        read_access = []
+        write_access = []
+        for gid, ace in self.acl.items():
+            op = acemask_to_str(ace.acemask, True)
+            if op == "read":
+                read_access.append(gid)
+            elif op == "write":
+                write_access.append(gid)
+            elif op == "read/write":
+                read_access.append(gid)
+                write_access.append(gid)
+            else:
+                # Unknown combination
+                pass
+             
+        return read_access, write_access
+
+
+    def update(self, **kwargs):
+        """Update a resource"""
+        if 'metadata' in kwargs:
+            kwargs['container_metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+            del kwargs['metadata']
+        self.entry.update(**kwargs)
+        
+        self.get_obj()
+        kwargs2 = {'modified_ts' : datetime.now()}
+        self.obj.update(**kwargs2)
+        
+        return self
+
+
     def user_can(self, user, action):
         """
         User can perform the action if any of the user's group IDs
@@ -445,3 +278,136 @@ class Resource(Model):
         if action in actions:
             return True
         return False
+
+#     def mqtt_get_state(self):
+#         payload = dict()
+#         payload['id'] = self.id
+#         payload['url'] = self.url
+#         payload['container'] = self.container
+#         payload['name'] = self.get_name()
+#         payload['create_ts'] = self.create_ts
+#         payload['modified_ts'] = self.modified_ts
+#         payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
+# 
+#         return payload
+# 
+#     def mqtt_publish(self, operation, pre_state, post_state):
+#         payload = dict()
+#         payload['pre'] = pre_state
+#         payload['post'] = post_state
+#         topic = u'{0}/resource{1}/{2}'.format(operation, self.container, self.get_name())
+#         # Clean up the topic by removing superfluous slashes.
+#         topic = '/'.join(filter(None, topic.split('/')))
+#         # Remove MQTT wildcards from the topic. Corner-case: If the resource name is made entirely of # and + and a
+#         # script is set to run on such a resource name. But that's what you get if you use stupid names for things.
+#         topic = topic.replace('#', '').replace('+', '')
+#         logging.info(u'Publishing on topic "{0}"'.format(topic))
+#         try:
+#             publish.single(topic, json.dumps(payload, default=datetime_serializer))
+#         except:
+#             logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
+# 
+
+
+
+#     def __unicode__(self):
+#         return self.path()
+# 
+#     def get_acl_metadata(self):
+#         """Return a dictionary of acl based on the Resource schema"""
+#         return serialize_acl_metadata(self)
+# 
+#     def get_container(self):
+#         """Returns the parent collection of the resource"""
+#         # Check the container exists
+#         from indigo.models.collection import Collection
+#         container = Collection.find_by_path(self.container)
+#         if not container:
+#             raise NoSuchCollectionError(self.container)
+#         else:
+#             return container
+# 
+#     def get_metadata(self):
+#         """Return a dictionary of metadata"""
+#         return meta_cassandra_to_cdmi(self.metadata)
+# 
+#     def get_metadata_key(self, key):
+#         """Return the value of a metadata"""
+#         return decode_meta(self.metadata.get(key, ""))
+# 
+#     def get_name(self):
+#         """Return the name of a resource. If the resource is a reference we
+#         append a trailing '?' on the resource name"""
+#         # References are object whose url doesn't start with 'cassandra://'
+#         if self.is_reference():
+#             return "{}?".format(self.name)
+#         else:
+#             return self.name
+# 
+#     def index(self):
+#         SearchIndex.reset(self.id)
+#         SearchIndex.index(self, ['name', 'metadata', 'mimetype'])
+# 
+#     def is_reference(self):
+#         return not self.url.startswith("cassandra://")
+# 
+#     def md_to_list(self):
+#         """Transform metadata to a list of couples for web ui"""
+#         return metadata_to_list(self.metadata)
+# 
+#     def path(self):
+#         """Return the full path of the resource"""
+#         return merge(self.container, self.name)
+# 
+
+    def chunk_content(self):
+        self.get_obj()
+        return self.obj.chunk_content()
+        
+# 
+
+# 
+ 
+    def create_acl(self, read_access, write_access):
+        self.get_obj()
+        self.obj.create_acl(read_access, write_access)
+# 
+#     def update_cdmi_acl(self, cdmi_acl):
+#         """Update acl with the metadata acl passed with a CDMI request"""
+#         cfg = get_config(None)
+#         keyspace = cfg.get('KEYSPACE', 'indigo')
+#         ls_access = []
+#         for cdmi_ace in cdmi_acl:
+#             if 'identifier' in cdmi_ace:
+#                 gid = cdmi_ace['identifier']
+#             else:
+#                 # Wrong syntax for the ace
+#                 continue
+#             g = Group.find(gid)
+#             if g:
+#                 ident = g.name
+#             elif gid.upper() == "AUTHENTICATED@":
+#                 ident = "AUTHENTICATED@"
+#             else:
+#                 # TODO log or return error if the identifier isn't found ?
+#                 continue
+#             s = ("'{}': {{"
+#                  "acetype: '{}', "
+#                  "identifier: '{}', "
+#                  "aceflags: {}, "
+#                  "acemask: {}"
+#                  "}}").format(g.id,
+#                               cdmi_ace['acetype'].upper(),
+#                               ident,
+#                               cdmi_str_to_aceflag(cdmi_ace['aceflags']),
+#                               cdmi_str_to_acemask(cdmi_ace['acemask'], True)
+#                              )
+#             ls_access.append(s)
+#         acl = "{{{}}}".format(", ".join(ls_access))
+#         query= ("UPDATE {}.resource SET acl = acl + {}"
+#                 "WHERE container='{}' AND name='{}'").format(
+#             keyspace,
+#             acl,
+#             self.container.replace("'", "\''"),
+#             self.name.replace("'", "\''"))
+#         connection.execute(query)

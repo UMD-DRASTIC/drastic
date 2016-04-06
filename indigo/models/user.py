@@ -22,9 +22,10 @@ from passlib.hash import pbkdf2_sha256
 
 from indigo.models.group import Group
 from indigo.models.errors import UserConflictError
-from indigo.util import default_uuid
-
-from indigo.util import log_with
+from indigo.util import (
+    default_uuid,
+    log_with,
+)
 
 
 class User(Model):

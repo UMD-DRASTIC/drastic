@@ -27,14 +27,11 @@ import time
 
 from indigo.models.group import Group
 from indigo.models.user import User
-from indigo.models.node import Node
+from indigo.models.tree_entry import TreeEntry
 from indigo.models.collection import Collection
+from indigo.models.data_object import DataObject
 from indigo.models.resource import Resource
 from indigo.models.search import SearchIndex
-from indigo.models.search2 import SearchIndex2
-from indigo.models.blob import Blob, BlobPart
-from indigo.models.activity import Activity
-from indigo.models.id_index import IDIndex
 from indigo.models.id_search import IDSearch
 from indigo.models.acl import Ace
 
@@ -43,7 +40,7 @@ from indigo.log import init_log
 logger = init_log('models')
 
 
-def initialise(keyspace, hosts=('127.0.0.1',), strategy='SimpleStrategy',
+def initialise(keyspace="indigo", hosts=('127.0.0.1',), strategy='SimpleStrategy',
                repl_factor=1):
     """Initialise Cassandra connection"""
     num_retries = 6
@@ -69,8 +66,7 @@ def initialise(keyspace, hosts=('127.0.0.1',), strategy='SimpleStrategy',
 
 def sync():
     """Create tables for the different models"""
-    tables = (User, Node, Collection, Resource, Group, SearchIndex, Blob,
-              BlobPart, Activity, IDIndex, SearchIndex2, IDSearch)
+    tables = (User, Group, SearchIndex, IDSearch, TreeEntry, DataObject)
 
     for table in tables:
         logger.info('Syncing table "{0}"'.format(table.__name__))

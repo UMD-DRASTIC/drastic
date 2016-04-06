@@ -245,7 +245,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTERM, shutdown)
 
     cfg = get_config(None)
-    initialise(cfg.get('KEYSPACE', 'indigo'),
+    initialise(keyspace=cfg.get('KEYSPACE', 'indigo'),
                hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
                repl_factor=cfg.get('REPLICATION_FACTOR', 1))
 

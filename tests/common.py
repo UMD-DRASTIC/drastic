@@ -1,4 +1,4 @@
-"""Utilities package
+"""Common class for unittest 
 
 Copyright 2015 Archive Analytics Solutions
 
@@ -15,24 +15,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import unittest
 
+from indigo.models import initialise
+from indigo.util import (
+    split,
+)
 from indigo.models import (
     Collection,
     Resource,
 )
 
 
-def is_collection(path):
-    """Check if the collection exists"""
-    return Collection.find(path) is not None
+class IndigoTestCase(unittest.TestCase):
 
 
-def is_resource(path):
-    """Check if the resource exists"""
-    return Resource.find(path) is not None
+    def setUp(self):
+        initialise()
 
 
-def path_exists(path):
-    """Check if the path is already in use"""
-    return is_resource(path) or is_collection(path)
+    def create_collection(self, path):
+        container, name = split(path)
+        Collection.create(name, container)
+
+
+    def create_resource(self, path):
+        container, name = split(path)
+        Collection.create(name, container)
+
+
+    def delete_collection(self, path):
+        Collection.delete_all(path)
+
 

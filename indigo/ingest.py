@@ -25,12 +25,12 @@ from Queue import Queue
 
 from cassandra.cqlengine.query import BatchQuery
 
-from indigo.models.search2 import SearchIndex2
+from indigo.models.search import SearchIndex
 from indigo.models.blob import Blob
 from indigo.models.user import User
 from indigo.models.group import Group
-from indigo.models.collection import Collection
-from indigo.models.resource import Resource
+#from indigo.models.collection import Collection
+#from indigo.models.resource import Resource
 from indigo.models.errors import (
     CollectionConflictError,
     ResourceConflictError
@@ -330,8 +330,8 @@ class ThreadClass(Thread):
             logger.info(msg)
 
         # t1 = time.time()
-        SearchIndex2.reset(resource.id)
-        SearchIndex2.index(resource, ['name', 'metadata'])
+        SearchIndex.reset(resource.id)
+        SearchIndex.index(resource, ['name', 'metadata'])
 
         # msg = "Index Management -> {}".format(time.time() - t1)
         # logger.info(msg)
