@@ -34,6 +34,8 @@ from indigo.models import (
 )
 from indigo.models.acl import (
     Ace,
+    cdmi_str_to_aceflag,
+    cdmi_str_to_acemask,
     str_to_acemask,
 )
 
@@ -45,11 +47,7 @@ from indigo.models.acl import (
 # from indigo.models.resource import Resource
 # from indigo.models.search import SearchIndex
 # from indigo.models.acl import (
-#     Ace,
 #     acemask_to_str,
-#     cdmi_str_to_aceflag,
-#     str_to_acemask,
-#     cdmi_str_to_acemask,
 #     serialize_acl_metadata
 # )
 # from indigo.util import (
@@ -68,6 +66,11 @@ from indigo.models.acl import (
 #     NoSuchCollectionError
 # )
 
+static_fields = ["container_metadata",
+                 "container_id",
+                 "container_create_ts",
+                 "container_modified_ts",
+                 "container_acl"]
 
 class TreeEntry(Model):
     """TreeEntry model"""
@@ -101,8 +104,8 @@ class TreeEntry(Model):
     # As with a conventional filesystem this is simply a reference to the 'real' data where ACLs, system metadata &c
     # are held.
     # per-record, but only for externals ( see RealObject)
-    metadata   = columns.Map(columns.Text, columns.Text)
-    # Use the url schema (   file:// , cdmi:// &c ) to route the request...
+    metadata = columns.Map(columns.Text, columns.Text)
+    # Use the url schema (file:// , cdmi:// &c ) to route the request...
     # Only cdmi:// does anything everything else results in a redirect
     url = columns.Text()
     id = columns.Text()
@@ -121,6 +124,8 @@ class TreeEntry(Model):
             metadata["cdmi_mimetype"] = kwargs["mimetype"]
             kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
             del kwargs['mimetype']
+        print "tree entry create"
+        print kwargs
         new = super(TreeEntry, cls).create(**kwargs)
         return new
 
@@ -141,11 +146,64 @@ class TreeEntry(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'indigo')
         session.set_keyspace(keyspace)
+
+        if "mimetype" in kwargs:
+            metadata = kwargs.get('metadata', {})
+            metadata["cdmi_mimetype"] = kwargs["mimetype"]
+            kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
+            del kwargs['mimetype']
+
         for arg in kwargs:
-            query = SimpleStatement("""UPDATE tree_entry SET {}=%s 
-                WHERE container=%s""".format(arg))
-            session.execute(query, (kwargs[arg], self.container))
+            # For static fields we can't use the name in the where condition
+            if arg in static_fields:
+                query = SimpleStatement("""UPDATE tree_entry SET {}=%s 
+                    WHERE container=%s""".format(arg))
+                session.execute(query, (kwargs[arg], self.container))
+            else:
+                query = SimpleStatement("""UPDATE tree_entry SET {}=%s 
+                    WHERE container=%s and name=%s""".format(arg))
+                session.execute(query, (kwargs[arg], self.container, self.name))
         return self
+
+
+    def update_cdmi_acl(self, cdmi_acl):
+        """Update acl with the metadata acl passed with a CDMI request"""
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        ls_access = []
+        for cdmi_ace in cdmi_acl:
+            if 'identifier' in cdmi_ace:
+                gid = cdmi_ace['identifier']
+            else:
+                # Wrong syntax for the ace
+                continue
+            g = Group.find(gid)
+            if g:
+                ident = g.name
+            elif gid.upper() == "AUTHENTICATED@":
+                ident = "AUTHENTICATED@"
+            else:
+                # TODO log or return error if the identifier isn't found ?
+                continue
+            s = ("'{}': {{"
+                 "acetype: '{}', "
+                 "identifier: '{}', "
+                 "aceflags: {}, "
+                 "acemask: {}"
+                 "}}").format(g.id,
+                              cdmi_ace['acetype'].upper(),
+                              ident,
+                              cdmi_str_to_aceflag(cdmi_ace['aceflags']),
+                              cdmi_str_to_acemask(cdmi_ace['acemask'], False)
+                             )
+            ls_access.append(s)
+        acl = "{{{}}}".format(", ".join(ls_access))
+       
+        query = """UPDATE tree_entry SET container_acl={} 
+            WHERE container='{}'""".format(acl, self.container.replace("'", "\''"))
+        session.execute(query)
 
 
     def update_acl(self, read_access, write_access):
@@ -191,46 +249,8 @@ class TreeEntry(Model):
                  "}}").format(gid, ident, 0, str_to_acemask(access[gid], False))
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
-        
-        query = """UPDATE tree_entry SET container_acl={} 
-            WHERE container='{}'""".format(acl, self.container.replace("'", "\''"))
-        session.execute(query)
 
+        query = SimpleStatement("""UPDATE tree_entry SET container_acl={} 
+            WHERE container=%s""".format(acl))
+        session.execute(query, (self.container,))
 
-
-# 
-
-# 
-#     @classmethod
-#     def find_collection(cls, path):
-#         """Return a collection from a path"""
-#         if path == '/':
-#             return cls.get_root_collection()
-#         return cls.objects.filter(container=path, name='.').first()
-# 
-#     def get_metadata(self):
-#         """Return a dictionary of metadata"""
-#         return meta_cassandra_to_cdmi(self.metadata)
-
-# 
-#     def is_container(self):
-#         return self.name == "." or self.name.endswith('/')
-# 
-#     def read_acl(self):
-#         """Return two list of groups id which have read and write access"""
-#         read_access = []
-#         write_access = []
-#         for gid, ace in self.container_acl.items():
-#             op = acemask_to_str(ace.acemask, False)
-#             if op == "read":
-#                 read_access.append(gid)
-#             elif op == "write":
-#                 write_access.append(gid)
-#             elif op == "read/write":
-#                 read_access.append(gid)
-#                 write_access.append(gid)
-#             else:
-#                 # Unknown combination
-#                 pass
-#             
-#         return read_access, write_access

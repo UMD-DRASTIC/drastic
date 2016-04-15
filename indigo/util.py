@@ -63,7 +63,7 @@ class IterStreamer(object):
                 chunk = self.next()
                 data += chunk
                 count += len(chunk)
-        except StopIteration  :
+        except StopIteration:
             self.leftover = ''
             return data
 

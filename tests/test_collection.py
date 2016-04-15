@@ -9,7 +9,7 @@ from nose.tools import raises
 class NodeTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
-    def test_a_create_root(self):
+    def test_create_root(self):
         coll = Collection.create(name="test_root", parent=None, path="/")
         assert coll.name == "test_root"
         assert coll.path == '/'

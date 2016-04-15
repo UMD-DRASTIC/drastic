@@ -36,9 +36,9 @@ def get_config(module_name=None):
 
     settings = importlib.import_module(module_name)
     config = {}
-    for k, v in settings.__dict__.iteritems():
-        if k.startswith('_'):
+    for key, val in settings.__dict__.iteritems():
+        if key.startswith('_'):
             continue
-        config[k] = v
+        config[key] = val
 
     return config

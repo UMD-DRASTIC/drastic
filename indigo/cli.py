@@ -20,30 +20,33 @@ import sys
 
 from indigo import get_config
 from indigo.models.errors import GroupConflictError
-from indigo.models import initialise, sync, destroy
+from indigo.models import (
+    initialise,
+    sync
+)
 from indigo.ingest import do_ingest
-from indigo.index import do_index
 
 
 def parse_arguments():
     """Parse command-line arguments"""
-    parser = argparse.ArgumentParser(description='Interact with the indigo system')
+    description = 'Interact with the indigo system'
+    parser = argparse.ArgumentParser(description=description)
     parser.add_argument('command', type=str, metavar="N", nargs="+",
-                        help='The command to run')
+        help='The command to run')
     parser.add_argument('--config', '-c', dest='config', action='store',
-                        help='Specify the location of the configuration file')
+        help='Specify the location of the configuration file')
     parser.add_argument('--group', '-g', dest='group', action='store',
-                        help='Specify the group name for ingestion of data')
+        help='Specify the group name for ingestion of data')
     parser.add_argument('--user', '-u', dest='user', action='store',
-                        help='Specify the username for ingestion of data')
+        help='Specify the username for ingestion of data')
     parser.add_argument('--folder', dest='folder', action='store',
-                        help='Specify the root folder to ingest from on disk')
+        help='Specify the root folder to ingest from on disk')
     parser.add_argument('--noimport', dest='no_import', action='store_true',
-                        help='Set if we do not want to import the files into Cassandra')
+        help='Set if we do not want to import the files into Cassandra')
     parser.add_argument('--localip', dest='local_ip', action='store',
-                        help='Specify the IP address for this machine (subnets/private etc)')
+        help='Specify the IP address for this machine (subnets/private etc)')
     parser.add_argument('--include', dest='include', action='store',
-                        help='include ONLY paths that include this string')
+        help='include ONLY paths that include this string')
     return parser.parse_args()
 
 
@@ -177,4 +180,4 @@ def main():
     elif command == 'ingest':
         do_ingest(cfg, args)
     elif command == 'index':
-        do_index(cfg, args)
+        pass#do_index(cfg, args)

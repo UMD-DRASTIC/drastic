@@ -24,6 +24,7 @@ from cassandra.cqlengine import (
     columns,
     connection
 )
+from cassandra.query import SimpleStatement
 from cassandra.cqlengine.models import Model
 from paho.mqtt import publish
 
@@ -126,6 +127,16 @@ class DataObject(Model):
 
 
     @classmethod
+    def delete_id(cls, uuid):
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        query = SimpleStatement("""DELETE FROM data_object WHERE id=%s""")
+        session.execute(query, (uuid,))
+
+
+    @classmethod
     def find(cls, uuid):
         entries = cls.objects.filter(id=uuid)
         if not entries:
@@ -202,4 +213,44 @@ class DataObject(Model):
             acl,
             self.id)
         connection.execute(query)
+
+
+    def update_cdmi_acl(self, cdmi_acl):
+        """Update acl with the metadata acl passed with a CDMI request"""
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        ls_access = []
+        for cdmi_ace in cdmi_acl:
+            if 'identifier' in cdmi_ace:
+                gid = cdmi_ace['identifier']
+            else:
+                # Wrong syntax for the ace
+                continue
+            g = Group.find(gid)
+            if g:
+                ident = g.name
+            elif gid.upper() == "AUTHENTICATED@":
+                ident = "AUTHENTICATED@"
+            else:
+                # TODO log or return error if the identifier isn't found ?
+                continue
+            s = ("'{}': {{"
+                 "acetype: '{}', "
+                 "identifier: '{}', "
+                 "aceflags: {}, "
+                 "acemask: {}"
+                 "}}").format(g.id,
+                              cdmi_ace['acetype'].upper(),
+                              ident,
+                              cdmi_str_to_aceflag(cdmi_ace['aceflags']),
+                              cdmi_str_to_acemask(cdmi_ace['acemask'], False)
+                             )
+            ls_access.append(s)
+        acl = "{{{}}}".format(", ".join(ls_access))
+       
+        query = """UPDATE data_object SET acl={} 
+            WHERE id='{}'""".format(acl, self.id)
+        session.execute(query)
 
