@@ -42,7 +42,6 @@ from indigo.models.errors import (
 # import logging
 
 
-
 class Collection(object):
     """Collection model"""
 
@@ -72,7 +71,6 @@ class Collection(object):
         parent = Collection.find(container)
         if parent is None:
             raise NoSuchCollectionError(container)
-        #TODO: Check resource doesn't exist
         resource = Resource.find(merge(container, name))
         if resource is not None:
             raise ResourceConflictError(container)
@@ -81,11 +79,11 @@ class Collection(object):
             raise CollectionConflictError(container)
         if metadata:
             metadata = meta_cdmi_to_cassandra(metadata)
-        d = datetime.now()
+        now = datetime.now()
         coll_entry = TreeEntry.create(container=path,
                                       name='.',
-                                      container_create_ts=d,
-                                      container_modified_ts=d)
+                                      container_create_ts=now,
+                                      container_modified_ts=now)
         coll_entry.save()
         coll_entry.id = coll_entry.container_id
         coll_entry.save()
@@ -97,28 +95,28 @@ class Collection(object):
 
 
     def create_acl(self, read_access, write_access):
-        print "collection create acl"
-        print read_access, write_access
+        """Create ACL in the tree entry table from two lists of groups id,
+        existing ACL are replaced"""
         self.entry.create_acl(read_access, write_access)
 
 
     @classmethod
     def create_root(cls):
         """Create the root container"""
-        d = datetime.now()
+        now = datetime.now()
         root_entry = TreeEntry.create(container='/',
                                       name='.',
-                                      container_create_ts=d,
-                                      container_modified_ts=d)
+                                      container_create_ts=now,
+                                      container_modified_ts=now)
         root_entry.save()
         root_entry.id = root_entry.container_id
         root_entry.save()
-        
         root_entry.add_default_acl()
         return root_entry
 
 
     def delete(self):
+        """Delete a collection and the associated row in the tree entry table"""
         cfg = get_config(None)
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'indigo')
@@ -141,8 +139,8 @@ class Collection(object):
         if not parent:
             return
         collections, resources = parent.get_child()
-        collections = [Collection.find(merge(path,c)) for c in collections]
-        resources = [Resource.find(merge(path,c)) for c in resources]
+        collections = [Collection.find(merge(path, c)) for c in collections]
+        resources = [Resource.find(merge(path, c)) for c in resources]
         for resource in resources:
             resource.delete()
         for collection in collections:
@@ -152,6 +150,8 @@ class Collection(object):
 
     @classmethod
     def find(cls, path):
+        """Find a collection by path, initialise the collection with the
+        appropriate row in the tree_entry table"""
         entries = TreeEntry.objects.filter(container=path, name=".")
         if not entries:
             return None
@@ -205,7 +205,7 @@ class Collection(object):
                 child_container.append(entry.name[:-1])
             else:
                 child_dataobject.append(entry.name)
-        return (child_container , child_dataobject)
+        return (child_container, child_dataobject)
 
 
     def get_metadata(self):
@@ -228,12 +228,12 @@ class Collection(object):
         read_access = []
         write_access = []
         for gid, ace in self.acl.items():
-            op = acemask_to_str(ace.acemask, False)
-            if op == "read":
+            oper = acemask_to_str(ace.acemask, False)
+            if oper == "read":
                 read_access.append(gid)
-            elif op == "write":
+            elif oper == "write":
                 write_access.append(gid)
-            elif op == "read/write":
+            elif oper == "read/write":
                 read_access.append(gid)
                 write_access.append(gid)
             else:
@@ -264,17 +264,24 @@ class Collection(object):
         """Update a collection"""
         kwargs['container_modified_ts'] = datetime.now()
         if 'metadata' in kwargs:
-            kwargs['container_metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+            # Transform the metadata in cdmi format to the format stored in
+            # Cassandra
+            metadata = meta_cdmi_to_cassandra(kwargs['metadata'])
+            kwargs['container_metadata'] = metadata
             del kwargs['metadata']
         self.entry.update(**kwargs)
         return self
 
 
     def update_acl(self, read_access, write_access):
+        """Update ACL in the tree entry table from two lists of groups id,
+        existing ACL are replaced"""
         self.entry.update_acl(read_access, write_access)
 
 
     def update_cdmi_acl(self, cdmi_acl):
+        """Update ACL in the tree entry table from ACL in the cdmi format (list
+        of ACE dictionary), existing ACL are replaced"""
         self.entry.update_cdmi_acl(cdmi_acl)
 
 

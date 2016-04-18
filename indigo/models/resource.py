@@ -17,10 +17,7 @@ limitations under the License.
 
 from datetime import datetime
 import logging
-from cassandra.cqlengine import connection
-from cassandra.query import SimpleStatement
 
-from indigo import get_config
 from indigo.models import (
     DataObject,
     TreeEntry
@@ -43,20 +40,6 @@ from indigo.util import (
     split,
 )
 
-# import json
-# from paho.mqtt import publish
-# from indigo.models.group import Group
-# from indigo.models.acl import (
-#     cdmi_str_to_aceflag,
-#     str_to_acemask,
-#     cdmi_str_to_acemask,
-# )
-# from indigo.util import (
-#     datetime_serializer
-# )
-# from indigo.models.search import SearchIndex
-
-
 
 class Resource(object):
     """Resource Model"""
@@ -67,7 +50,6 @@ class Resource(object):
     def __init__(self, entry, obj=None):
         self.entry = entry
         self.obj = obj
-        
         # Tree metadata
         self.tree_metadata = meta_cassandra_to_cdmi(self.entry.metadata)
         # Object metadata, only populated when needed as it requires an extra
@@ -89,6 +71,7 @@ class Resource(object):
 
 
     def chunk_content(self):
+        """Get a chunk of the data object"""
         self.get_obj()
         return self.obj.chunk_content()
 
@@ -96,6 +79,7 @@ class Resource(object):
     @classmethod
     def create(cls, container, name, uuid=None, metadata=None,
                url=None, mimetype=None):
+        """Create a new resource in the tree_entry table"""
         from indigo.models import Collection
         if uuid is None:
             uuid = default_cdmi_id()
@@ -112,11 +96,10 @@ class Resource(object):
         existing = cls.find(path)
         if existing:
             raise ResourceConflictError(path)
-        d = datetime.now()
         data_entry = TreeEntry.create(container=container,
                                       name=name,
-                                      container_create_ts=d,
-                                      container_modified_ts=d,
+                                      container_create_ts=create_ts,
+                                      container_modified_ts=modified_ts,
                                       url=url,
                                       id=uuid,
                                       mimetype=mimetype)
@@ -125,16 +108,20 @@ class Resource(object):
 
 
     def create_acl(self, read_access, write_access):
+        """Add the ACL from lists of group ids, ACL are replaced"""
         self.get_obj()
         self.obj.create_acl(read_access, write_access)
 
 
     def delete(self):
+        """Delete the resource in the tree_entry table and all the corresponding
+        blobs"""
         self.delete_blobs()
         self.entry.delete()
 
 
     def delete_blobs(self):
+        """Delete all blobs of the corresponding uuid"""
         if self.is_internal:
             obj_id = self.get_obj_id()
             if obj_id:
@@ -213,6 +200,8 @@ class Resource(object):
 
 
     def get_metadata(self):
+        """Return the metadata associated to the object as a CDMI dictionary
+        """
         self.get_obj()
         return meta_cassandra_to_cdmi(self.entry.metadata)
 
@@ -234,6 +223,8 @@ class Resource(object):
 
 
     def get_obj(self):
+        """Get the row in the data_object table. If it's a reference it my be
+        null"""
         if not self.obj:
             if self.is_internal:
                 obj_id = self.get_obj_id()
@@ -243,6 +234,7 @@ class Resource(object):
 
 
     def get_obj_id(self):
+        """Get the data object id from the url"""
         if self.is_internal:
             return self.url.replace("cassandra://", "")
         else:
@@ -263,18 +255,17 @@ class Resource(object):
         read_access = []
         write_access = []
         for gid, ace in self.acl.items():
-            op = acemask_to_str(ace.acemask, True)
-            if op == "read":
+            oper = acemask_to_str(ace.acemask, True)
+            if oper == "read":
                 read_access.append(gid)
-            elif op == "write":
+            elif oper == "write":
                 write_access.append(gid)
-            elif op == "read/write":
+            elif oper == "read/write":
                 read_access.append(gid)
                 write_access.append(gid)
             else:
                 # Unknown combination
                 pass
-             
         return read_access, write_access
 
 
@@ -302,17 +293,16 @@ class Resource(object):
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
         self.entry.update(**kwargs)
-        
         if self.is_internal:
             self.get_obj()
             kwargs2 = {'modified_ts' : datetime.now()}
             if self.obj:
                 self.obj.update(**kwargs2)
-        
         return self
 
 
     def update_cdmi_acl(self, cdmi_acl):
+        """Update the ACL from a cdmi list of ACE"""
         if self.is_internal:
             self.get_obj()
             if self.obj:

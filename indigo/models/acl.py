@@ -20,9 +20,9 @@ limitations under the License.
 # acemask:  an int value taken from the constant ACEMASK_*
 # str: A simplified access level name (read, write, read/write or null)
 # cdmi_str: A comma separated list of flags or masks, used in cdmi
-#             ("READ_ACL, READ_ATTRIBUTES", ..) 
+#             ("READ_ACL, READ_ATTRIBUTES", ..)
 
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 from cassandra.cqlengine.usertype import UserType
 from cassandra.cqlengine import columns
 
@@ -97,7 +97,7 @@ ACEMASK_STR_INT_OBJ = {
     "read/write": 0x56 | 0x09,
     "edit": 0x56,
     "delete": ACEMASK_DELETE,
-    
+
     "SYNCHRONIZE": 0x00100000,
     "WRITE_OWNER": 0x00080000,
     "WRITE_ACL": 0x00040000,
@@ -133,7 +133,7 @@ ACEMASK_STR_INT_COL = {
     "delete": (ACEMASK_DELETE |
                ACEMASK_DELETE_OBJECT |
                ACEMASK_DELETE_SUBCONTAINER),
-    
+
     "SYNCHRONIZE": 0x00100000,
     "WRITE_OWNER": 0x00080000,
     "WRITE_ACL": 0x00040000,
@@ -258,33 +258,9 @@ def serialize_acl_metadata(obj):
     # lists)
     from indigo.models.resource import Resource
     is_object = isinstance(obj, Resource)
-#     acls = defaultdict(list)
-#     if len(obj.read_access) > 0:
-#         for user in obj.read_access:
-#             acls[user].append("read")
-#     else:
-#         acls["AUTHENTICATED@"].append("read")
-# 
-#     if len(obj.edit_access) > 0:
-#         for user in obj.edit_access:
-#             acls[user].append("edit")
-#     else:
-#         acls["AUTHENTICATED@"].append("edit")
-# 
-#     if len(obj.write_access) > 0:
-#         for user in obj.write_access:
-#             acls[user].append("write")
-#     else:
-#         acls["AUTHENTICATED@"].append("write")
-# 
-#     if len(obj.delete_access) > 0:
-#         for user in obj.delete_access:
-#             acls[user].append("delete")
-#     else:
-#         acls["AUTHENTICATED@"].append("delete")
     mapped_md = []
     # Create a list of ACE from the dictionary we created
-    for gid, ace in obj.acl.items():
+    for _, ace in obj.acl.items():
         acl_md = OrderedDict()
         acl_md["acetype"] = ace.acetype
         acl_md["identifier"] = ace.identifier
@@ -321,8 +297,8 @@ class Ace(UserType):
     The mask field of an ACE contains a set of permissions allowed or denied.
 
     """
-    
     acetype = columns.Text()
     identifier = columns.Text()
-    aceflags = columns.Integer() # Not used yet, future version will do that
+    # aceflags isn't used yet, future versions may use it
+    aceflags = columns.Integer()
     acemask = columns.Integer()

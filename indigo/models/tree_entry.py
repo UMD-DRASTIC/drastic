@@ -15,7 +15,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from datetime import datetime
 from cassandra.cqlengine.models import Model
 from cassandra.query import SimpleStatement
 from cassandra.cqlengine import (
@@ -39,33 +38,6 @@ from indigo.models.acl import (
     str_to_acemask,
 )
 
-# from datetime import datetime
-# import json
-# import paho.mqtt.publish as publish
-# import logging
-# 
-# from indigo.models.resource import Resource
-# from indigo.models.search import SearchIndex
-# from indigo.models.acl import (
-#     acemask_to_str,
-#     serialize_acl_metadata
-# )
-# from indigo.util import (
-#     decode_meta,
-#     default_cdmi_id,
-#     meta_cassandra_to_cdmi,
-#     meta_cdmi_to_cassandra,
-#     merge,
-#     metadata_to_list,
-#     split,
-#     datetime_serializer
-# )
-# from indigo.models.errors import (
-#     CollectionConflictError,
-#     ResourceConflictError,
-#     NoSuchCollectionError
-# )
-
 static_fields = ["container_metadata",
                  "container_id",
                  "container_create_ts",
@@ -74,7 +46,7 @@ static_fields = ["container_metadata",
 
 class TreeEntry(Model):
     """TreeEntry model"""
-    
+
     # Partitioned by container, clustered by name, so all files for a directory
     # are in the same bucket and share the single instance of the (static
     # container data
@@ -101,9 +73,9 @@ class TreeEntry(Model):
                                 static=True)
 
     # This is the actual directory entry per-se, i.e. unique per name....
-    # As with a conventional filesystem this is simply a reference to the 'real' data where ACLs, system metadata &c
-    # are held.
-    # per-record, but only for externals ( see RealObject)
+    # As with a conventional filesystem this is simply a reference to the 'real'
+    # data where ACLs, system metadata &c are held.
+    # per-record, but only for externals (see RealObject)
     metadata = columns.Map(columns.Text, columns.Text)
     # Use the url schema (file:// , cdmi:// &c ) to route the request...
     # Only cdmi:// does anything everything else results in a redirect
@@ -112,7 +84,7 @@ class TreeEntry(Model):
 
 
     def add_default_acl(self):
-        # Add read access to all authenticated users
+        """Add read access to all authenticated users"""
         self.update_acl(["AUTHENTICATED@"], [])
 
 
@@ -124,19 +96,17 @@ class TreeEntry(Model):
             metadata["cdmi_mimetype"] = kwargs["mimetype"]
             kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
             del kwargs['mimetype']
-        print "tree entry create"
-        print kwargs
         new = super(TreeEntry, cls).create(**kwargs)
         return new
 
 
     def create_acl(self, read_access, write_access):
-        #self.container_acl = {}
-        #self.save()
+        """""Create ACL from  lists of group uuids"""
         self.update_acl(read_access, write_access)
 
 
     def path(self):
+        """Get the full path of the specific entry"""
         return merge(self.container, self.name)
 
 
@@ -156,11 +126,11 @@ class TreeEntry(Model):
         for arg in kwargs:
             # For static fields we can't use the name in the where condition
             if arg in static_fields:
-                query = SimpleStatement("""UPDATE tree_entry SET {}=%s 
+                query = SimpleStatement("""UPDATE tree_entry SET {}=%s
                     WHERE container=%s""".format(arg))
                 session.execute(query, (kwargs[arg], self.container))
             else:
-                query = SimpleStatement("""UPDATE tree_entry SET {}=%s 
+                query = SimpleStatement("""UPDATE tree_entry SET {}=%s
                     WHERE container=%s and name=%s""".format(arg))
                 session.execute(query, (kwargs[arg], self.container, self.name))
         return self
@@ -200,20 +170,18 @@ class TreeEntry(Model):
                              )
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
-       
-        query = """UPDATE tree_entry SET container_acl={} 
-            WHERE container='{}'""".format(acl, self.container.replace("'", "\''"))
+        query = """UPDATE tree_entry SET container_acl={}
+            WHERE container='{}'""".format(acl,
+                                           self.container.replace("'", "\''"))
         session.execute(query)
 
 
     def update_acl(self, read_access, write_access):
         """Replace the acl with the given list of access.
- 
         read_access: a list of groups id that have read access for this
                      collection
         write_access: a list of groups id that have write access for this
                      collection
- 
         """
         # The dictionary keys are the groups id for which we have an ACE
         # We don't use aceflags yet, everything will be inherited by lower

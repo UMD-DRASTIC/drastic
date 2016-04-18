@@ -22,10 +22,12 @@ class BaseError(Exception):
 
 
 class NoReadAccessError(BaseError):
+    """ACL Exception for read access."""
     pass
 
 
 class NoWriteAccessError(BaseError):
+    """ACL Exception for write access."""
     pass
 
 
