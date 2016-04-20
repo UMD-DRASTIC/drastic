@@ -26,9 +26,8 @@ from Queue import Queue
 from cassandra.cqlengine.query import BatchQuery
 
 from indigo.models.search import SearchIndex
-from indigo.models.blob import Blob
-from indigo.models.user import User
-from indigo.models.group import Group
+from indigo.models import User
+from indigo.models import Group
 #from indigo.models.collection import Collection
 #from indigo.models.resource import Resource
 from indigo.models.errors import (
@@ -99,7 +98,7 @@ def do_ingest(cfg, args):
 class Ingester(object):
 
     def __init__(self, user, group, folder, local_ip='127.0.0.1', skip_import=False, include_pattern=None):
-        self.groups = [group.id]
+        self.groups = [group.uuid]
         self.user = user
         self.folder = folder
         self.collection_cache = {}
@@ -330,7 +329,7 @@ class ThreadClass(Thread):
             logger.info(msg)
 
         # t1 = time.time()
-        SearchIndex.reset(resource.id)
+        SearchIndex.reset(resource.uuid)
         SearchIndex.index(resource, ['name', 'metadata'])
 
         # msg = "Index Management -> {}".format(time.time() - t1)

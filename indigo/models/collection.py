@@ -18,6 +18,7 @@ limitations under the License.
 from datetime import datetime
 from cassandra.cqlengine import connection
 from cassandra.query import SimpleStatement
+import json
 
 from indigo import get_config
 from indigo.models import TreeEntry
@@ -26,6 +27,7 @@ from indigo.models.acl import (
     serialize_acl_metadata
 )
 from indigo.util import (
+    datetime_serializer,
     decode_meta,
     meta_cassandra_to_cdmi,
     meta_cdmi_to_cassandra,
@@ -54,17 +56,19 @@ class Collection(object):
             self.name = u"Home"
         else:
             _, self.name = split(self.entry.container)
-        self.metadata = self.entry.container_metadata
         self.path = self.entry.container
-        self.parent, _ = split(self.path)
-        self._id = self.entry.container_id
+        self.container, _ = split(self.path)
+        self.uuid = self.entry.uuid
         self.create_ts = self.entry.container_create_ts
-        self.acl = self.entry.container_acl
+        self.modified_ts = self.entry.container_modified_ts
+        self.acl = self.entry.acl
+        self.metadata = self.entry.container_metadata
 
 
     @classmethod
-    def create(cls, name, container='/', metadata=None):
+    def create(cls, name, container='/', metadata=None, user_uuid=None):
         """Create a new collection"""
+        from indigo.models import Notification
         from indigo.models import Resource
         path = merge(container, name)
         # Check if parent collection exists
@@ -83,15 +87,20 @@ class Collection(object):
         coll_entry = TreeEntry.create(container=path,
                                       name='.',
                                       container_create_ts=now,
-                                      container_modified_ts=now)
+                                      container_modified_ts=now,
+                                      container_metadata=metadata)
         coll_entry.save()
-        coll_entry.id = coll_entry.container_id
+        coll_entry.uuid = coll_entry.container_uuid
         coll_entry.save()
         child_entry = TreeEntry.create(container=container,
                                        name=name + '/',
-                                       id=coll_entry.container_id)
+                                       uuid=coll_entry.container_uuid)
         child_entry.save()
-        return Collection.find(path)
+        new = Collection.find(path)
+        state = new.mqtt_get_state()
+        payload = new.mqtt_payload({}, state)
+        Notification.create_collection(user_uuid, path, payload)
+        return new
 
 
     def create_acl(self, read_access, write_access):
@@ -109,14 +118,17 @@ class Collection(object):
                                       container_create_ts=now,
                                       container_modified_ts=now)
         root_entry.save()
-        root_entry.id = root_entry.container_id
+        root_entry.uuid = root_entry.container_uuid
         root_entry.save()
         root_entry.add_default_acl()
         return root_entry
 
 
-    def delete(self):
+    def delete(self, user_uuid=None):
         """Delete a collection and the associated row in the tree entry table"""
+        from indigo.models import Notification
+        if self.is_root:
+            return
         cfg = get_config(None)
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'indigo')
@@ -124,14 +136,17 @@ class Collection(object):
         query = SimpleStatement("""DELETE FROM tree_entry WHERE container=%s""")
         session.execute(query, (self.path,))
         # Get the row that describe the collection as a child of its parent
-        child = TreeEntry.objects.filter(container=self.parent,
+        child = TreeEntry.objects.filter(container=self.container,
                                            name="{}/".format(self.name)).first()
         if child:
             child.delete()
+        state = self.mqtt_get_state()
+        payload = self.mqtt_payload(state, {})
+        Notification.delete_collection(user_uuid, self.path, payload)
 
 
     @classmethod
-    def delete_all(cls, path):
+    def delete_all(cls, path, user_uuid=None):
         """Delete recursively all sub-collections and all resources contained
         in a collection at 'path'"""
         from indigo.models import Resource
@@ -142,10 +157,10 @@ class Collection(object):
         collections = [Collection.find(merge(path, c)) for c in collections]
         resources = [Resource.find(merge(path, c)) for c in resources]
         for resource in resources:
-            resource.delete()
+            resource.delete(user_uuid)
         for collection in collections:
-            Collection.delete_all(collection.path)
-        parent.delete()
+            Collection.delete_all(collection.path, user_uuid)
+        parent.delete(user_uuid)
 
 
     @classmethod
@@ -172,7 +187,7 @@ class Collection(object):
             if self.is_root:
                 return set([])
             else:
-                parent_container = Collection.find(self.parent)
+                parent_container = Collection.find(self.container)
                 return parent_container.get_authorized_actions(user)
         actions = set([])
         for gid in user.groups + ["AUTHENTICATED@"]:
@@ -208,9 +223,14 @@ class Collection(object):
         return (child_container, child_dataobject)
 
 
-    def get_metadata(self):
+    def get_cdmi_metadata(self):
         """Return a dictionary of metadata"""
         return meta_cassandra_to_cdmi(self.metadata)
+
+
+    def get_list_metadata(self):
+        """Transform metadata to a list of couples for web ui"""
+        return metadata_to_list(self.metadata)
 
 
     def get_metadata_key(self, key):
@@ -218,9 +238,24 @@ class Collection(object):
         return decode_meta(self.metadata.get(key, ""))
 
 
-    def md_to_list(self):
-        """Transform metadata to a list of couples for web ui"""
-        return metadata_to_list(self.metadata)
+    def mqtt_get_state(self):
+        """Get the collection state for the payload"""
+        payload = dict()
+        payload['uuid'] = self.uuid
+        payload['container'] = self.container
+        payload['name'] = self.name
+        payload['create_ts'] = self.create_ts
+        payload['modified_ts'] = self.modified_ts
+        payload['metadata'] = self.get_cdmi_metadata()
+        return payload
+
+
+    def mqtt_payload(self, pre_state, post_state):
+        """Get a string version of the payload of the message"""
+        payload = dict()
+        payload['pre'] = pre_state
+        payload['post'] = post_state
+        return json.dumps(payload, default=datetime_serializer)
 
 
     def read_acl(self):
@@ -245,12 +280,12 @@ class Collection(object):
     def to_dict(self, user=None):
         """Return a dictionary which describes a collection for the web ui"""
         data = {
-            "id": self._id,
+            "id": self.uuid,
             "container": self.path,
             "name": self.name,
             "path": self.path,
             "created": self.create_ts,
-            "metadata": self.md_to_list()
+            "metadata": self.get_list_metadata()
         }
         if user:
             data['can_read'] = self.user_can(user, "read")
@@ -262,6 +297,8 @@ class Collection(object):
 
     def update(self, **kwargs):
         """Update a collection"""
+        from indigo.models import Notification
+        pre_state = self.mqtt_get_state()
         kwargs['container_modified_ts'] = datetime.now()
         if 'metadata' in kwargs:
             # Transform the metadata in cdmi format to the format stored in
@@ -269,7 +306,16 @@ class Collection(object):
             metadata = meta_cdmi_to_cassandra(kwargs['metadata'])
             kwargs['container_metadata'] = metadata
             del kwargs['metadata']
+        if 'user_uuid' in kwargs:
+            user_uuid = kwargs['user_uuid']
+            del kwargs['user_uuid']
+        else:
+            user_uuid = None
         self.entry.update(**kwargs)
+        coll = Collection.find(self.path)
+        post_state = coll.mqtt_get_state()
+        payload = coll.mqtt_payload(pre_state, post_state)
+        Notification.update_collection(user_uuid, coll.path, payload)
         return self
 
 

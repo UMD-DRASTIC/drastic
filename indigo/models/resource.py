@@ -17,6 +17,7 @@ limitations under the License.
 
 from datetime import datetime
 import logging
+import json
 
 from indigo.models import (
     DataObject,
@@ -31,6 +32,7 @@ from indigo.models.errors import (
     ResourceConflictError
 )
 from indigo.util import (
+    datetime_serializer,
     decode_meta,
     default_cdmi_id,
     merge,
@@ -39,6 +41,9 @@ from indigo.util import (
     metadata_to_list,
     split,
 )
+
+def is_reference(url):
+    return not url.startswith("cassandra://")
 
 
 class Resource(object):
@@ -49,21 +54,29 @@ class Resource(object):
 
     def __init__(self, entry, obj=None):
         self.entry = entry
-        self.obj = obj
-        # Tree metadata
-        self.tree_metadata = meta_cassandra_to_cdmi(self.entry.metadata)
-        # Object metadata, only populated when needed as it requires an extra
-        # Cassandra request
-        self.metadata = None
-        self.acl = self.entry.container_acl
-        self._id = self.entry.id
-        self.name = self.entry.name
-        self.parent = self.entry.container
-        self.path = self.entry.path()
         self.url = self.entry.url
-        self.mimetype = self.tree_metadata.get("cdmi_mimetype", "")
-        self.is_reference = not self.url.startswith("cassandra://")
-        self.is_internal = self.url.startswith("cassandra://")
+        self.path = self.entry.path()
+        self.container = self.entry.container
+        self.name = self.entry.name
+        self.is_reference = is_reference(self.url)
+        self.uuid = self.entry.uuid
+        if not self.is_reference:
+            self.obj_id = self.url.replace("cassandra://", "")
+            self.obj = DataObject.find(self.obj_id)
+            if self.obj:
+                self.metadata = self.obj.metadata
+                self.mimetype = self.obj.mimetype
+                self.acl = self.obj.acl
+                self.create_ts = self.obj.create_ts
+                self.modified_ts = self.obj.modified_ts
+                self.checksum = self.obj.checksum
+                self.size = self.obj.size
+        else:
+            self.metadata = self.entry.metadata
+            self.mimetype = self.entry.mimetype
+            self.acl = self.entry.acl
+            self.create_ts = self.entry.create_ts
+            self.modified_ts = self.entry.modified_ts
 
 
     def __unicode__(self):
@@ -72,15 +85,18 @@ class Resource(object):
 
     def chunk_content(self):
         """Get a chunk of the data object"""
-        self.get_obj()
-        return self.obj.chunk_content()
+        if self.obj:
+            return self.obj.chunk_content()
+        else:
+            return None
 
 
     @classmethod
     def create(cls, container, name, uuid=None, metadata=None,
-               url=None, mimetype=None):
+               url=None, mimetype=None, user_uuid=None):
         """Create a new resource in the tree_entry table"""
         from indigo.models import Collection
+        from indigo.models import Notification
         if uuid is None:
             uuid = default_cdmi_id()
         create_ts = datetime.now()
@@ -96,36 +112,57 @@ class Resource(object):
         existing = cls.find(path)
         if existing:
             raise ResourceConflictError(path)
-        data_entry = TreeEntry.create(container=container,
-                                      name=name,
-                                      container_create_ts=create_ts,
-                                      container_modified_ts=modified_ts,
-                                      url=url,
-                                      id=uuid,
-                                      mimetype=mimetype)
+        kwargs = {
+            "container": container,
+            "name": name,
+            "url": url,
+            "uuid": uuid,
+        }
+        if is_reference(url):
+            kwargs["create_ts"] = create_ts
+            kwargs["modified_ts"] = modified_ts
+            kwargs["mimetype"] = mimetype
+            if metadata:
+                kwargs["metadata"] = meta_cdmi_to_cassandra(metadata)
+        else:
+            obj_id = url.replace("cassandra://", "")
+            data_obj = DataObject.find(obj_id)
+            data_obj.mimetype = mimetype
+            data_obj.metadata = metadata
+            data_obj.save()
+
+        data_entry = TreeEntry.create(**kwargs)
         data_entry.save()
-        return Resource(data_entry)
+        new = Resource(data_entry)
+        state = new.mqtt_get_state()
+        payload = new.mqtt_payload({}, state)
+        Notification.create_resource(user_uuid, path, payload)
+        return new
 
 
     def create_acl(self, read_access, write_access):
         """Add the ACL from lists of group ids, ACL are replaced"""
-        self.get_obj()
-        self.obj.create_acl(read_access, write_access)
+        if self.is_reference:
+            self.entry.create_entry_acl(read_access, write_access)
+        else:
+            self.obj.create_acl(read_access, write_access)
 
 
-    def delete(self):
+    def delete(self, user_uuid=None):
         """Delete the resource in the tree_entry table and all the corresponding
         blobs"""
+        from indigo.models import Notification
         self.delete_blobs()
         self.entry.delete()
+        state = self.mqtt_get_state()
+        payload = self.mqtt_payload(state, {})
+        Notification.delete_resource(user_uuid, self.path, payload)
 
 
     def delete_blobs(self):
         """Delete all blobs of the corresponding uuid"""
-        if self.is_internal:
-            obj_id = self.get_obj_id()
-            if obj_id:
-                DataObject.delete_id(obj_id)
+        if not self.is_reference:
+            DataObject.delete_id(self.obj_id)
 
 
     @classmethod
@@ -141,24 +178,23 @@ class Resource(object):
 
     def full_dict(self, user=None):
         """Return a dictionary which describes a resource for the web ui"""
-        self.get_obj()
         data = {
-            "id": self._id,
+            "uuid": self.uuid,
             "name": self.get_name(),
-            "container": self.parent,
+            "container": self.container,
             "path": self.path,
-            "metadata": self.md_to_list(),
+            "metadata": self.get_list_metadata(),
             "url": self.url,
             "is_reference": self.is_reference,
             "mimetype": self.mimetype or "application/octet-stream",
             "type": self.mimetype,
+            "create_ts": self.create_ts,
+            "modified_ts": self.modified_ts
         }
         # Add fields when the object isn't a reference
         if self.obj:
-            data["checksum"] = self.obj.checksum
-            data["size"] = self.obj.size
-            data["create_ts"] = self.obj.create_ts
-            data["modified_ts"] = self.obj.modified_ts
+            data["checksum"] = self.checksum
+            data["size"] = self.size
         if user:
             data['can_read'] = self.user_can(user, "read")
             data['can_write'] = self.user_can(user, "write")
@@ -178,7 +214,7 @@ class Resource(object):
         # defined at this level
         if not self.acl:
             from indigo.models import Collection
-            parent_container = Collection.find(self.parent)
+            parent_container = Collection.find(self.container)
             return parent_container.get_authorized_actions(user)
         actions = set([])
         for gid in user.groups:
@@ -199,17 +235,20 @@ class Resource(object):
         return actions
 
 
-    def get_metadata(self):
+    def get_cdmi_metadata(self):
         """Return the metadata associated to the object as a CDMI dictionary
         """
-        self.get_obj()
-        return meta_cassandra_to_cdmi(self.entry.metadata)
+        return meta_cassandra_to_cdmi(self.metadata)
+
+
+    def get_list_metadata(self):
+        """Transform metadata to a list of couples for web ui"""
+        return metadata_to_list(self.metadata)
 
 
     def get_metadata_key(self, key):
         """Return the value of a metadata"""
-        self.get_obj()
-        return decode_meta(self.entry.metadata.get(key, ""))
+        return decode_meta(self.metadata.get(key, ""))
 
 
     def get_name(self):
@@ -222,32 +261,30 @@ class Resource(object):
             return self.name
 
 
-    def get_obj(self):
-        """Get the row in the data_object table. If it's a reference it my be
-        null"""
-        if not self.obj:
-            if self.is_internal:
-                obj_id = self.get_obj_id()
-                self.obj = DataObject.find(obj_id)
-                if self.obj:
-                    self.metadata = self.obj.metadata
-
-
-    def get_obj_id(self):
-        """Get the data object id from the url"""
-        if self.is_internal:
-            return self.url.replace("cassandra://", "")
-        else:
-            return None
-
     def get_path(self):
         """Return the full path of the resource"""
         return self.path
 
 
-    def md_to_list(self):
-        """Transform metadata to a list of couples for web ui"""
-        return metadata_to_list(self.entry.metadata)
+    def mqtt_get_state(self):
+        """Get the resource state for the payload"""
+        payload = dict()
+        payload['uuid'] = self.uuid
+        payload['url'] = self.url
+        payload['container'] = self.container
+        payload['name'] = self.get_name()
+        payload['create_ts'] = self.create_ts
+        payload['modified_ts'] = self.modified_ts
+        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
+        return payload
+
+
+    def mqtt_payload(self, pre_state, post_state):
+        """Get a string version of the payload of the message"""
+        payload = dict()
+        payload['pre'] = pre_state
+        payload['post'] = post_state
+        return json.dumps(payload, default=datetime_serializer)
 
 
     def read_acl(self):
@@ -272,9 +309,9 @@ class Resource(object):
     def simple_dict(self, user=None):
         """Return a dictionary which describes a resource for the web ui"""
         data = {
-            "id": self._id,
+            "id": self.uuid,
             "name": self.get_name(),
-            "container": self.parent,
+            "container": self.container,
             "path": self.path,
             "is_reference": self.is_reference,
             "mimetype": self.mimetype or "application/octet-stream",
@@ -290,21 +327,32 @@ class Resource(object):
 
     def update(self, **kwargs):
         """Update a resource"""
+        from indigo.models import Notification
+        pre_state = self.mqtt_get_state()
+        if 'user_uuid' in kwargs:
+            user_uuid = kwargs['user_uuid']
+            del kwargs['user_uuid']
+        else:
+            user_uuid = None
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
-        self.entry.update(**kwargs)
-        if self.is_internal:
-            self.get_obj()
+        if self.is_reference:
+            self.entry.update(**kwargs)
+        else:
             kwargs2 = {'modified_ts' : datetime.now()}
-            if self.obj:
+            if 'metadata' in kwargs:
+                kwargs2['metadata'] = kwargs['metadata']
                 self.obj.update(**kwargs2)
+        resc = Resource.find(self.path)
+        post_state = resc.mqtt_get_state()
+        payload = resc.mqtt_payload(pre_state, post_state)
+        Notification.update_resource(user_uuid, resc.path, payload)
         return self
 
 
     def update_cdmi_acl(self, cdmi_acl):
         """Update the ACL from a cdmi list of ACE"""
-        if self.is_internal:
-            self.get_obj()
+        if not self.is_reference:
             if self.obj:
                 self.obj.update_cdmi_acl(cdmi_acl)
 

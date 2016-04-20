@@ -21,6 +21,7 @@ from cassandra.cqlengine import (
     columns,
     connection
 )
+from datetime import datetime
 
 from indigo import get_config
 from indigo.util import (
@@ -39,7 +40,7 @@ from indigo.models.acl import (
 )
 
 static_fields = ["container_metadata",
-                 "container_id",
+                 "container_uuid",
                  "container_create_ts",
                  "container_modified_ts",
                  "container_acl"]
@@ -66,7 +67,7 @@ class TreeEntry(Model):
     # or less) atomic.
     #
     container_metadata = columns.Map(columns.Text, columns.Text, static=True)
-    container_id = columns.Text(default=default_cdmi_id, static=True)
+    container_uuid = columns.Text(default=default_cdmi_id, static=True)
     container_create_ts = columns.DateTime(static=True)
     container_modified_ts = columns.DateTime(static=True)
     container_acl = columns.Map(columns.Text, columns.UserDefinedType(Ace),
@@ -75,12 +76,16 @@ class TreeEntry(Model):
     # This is the actual directory entry per-se, i.e. unique per name....
     # As with a conventional filesystem this is simply a reference to the 'real'
     # data where ACLs, system metadata &c are held.
-    # per-record, but only for externals (see RealObject)
+    # per-record, but only for externals (see DataObject)
     metadata = columns.Map(columns.Text, columns.Text)
+    create_ts = columns.DateTime(default=datetime.now)
+    modified_ts = columns.DateTime()
+    acl = columns.Map(columns.Text, columns.UserDefinedType(Ace))
+    mimetype = columns.Text()
     # Use the url schema (file:// , cdmi:// &c ) to route the request...
     # Only cdmi:// does anything everything else results in a redirect
     url = columns.Text()
-    id = columns.Text()
+    uuid = columns.Text()
 
 
     def add_default_acl(self):
@@ -91,11 +96,11 @@ class TreeEntry(Model):
     @classmethod
     def create(cls, **kwargs):
         """Create"""
-        if "mimetype" in kwargs:
-            metadata = kwargs.get('metadata', {})
-            metadata["cdmi_mimetype"] = kwargs["mimetype"]
-            kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
-            del kwargs['mimetype']
+#         if "mimetype" in kwargs:
+#             metadata = kwargs.get('metadata', {})
+#             metadata["cdmi_mimetype"] = kwargs["mimetype"]
+#             kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
+#             del kwargs['mimetype']
         new = super(TreeEntry, cls).create(**kwargs)
         return new
 
@@ -103,6 +108,11 @@ class TreeEntry(Model):
     def create_acl(self, read_access, write_access):
         """""Create ACL from  lists of group uuids"""
         self.update_acl(read_access, write_access)
+
+
+    def create_entry_acl(self, read_access, write_access):
+        """""Create ACL from  lists of group uuids"""
+        self.update_entry_acl(read_access, write_access)
 
 
     def path(self):
@@ -117,11 +127,11 @@ class TreeEntry(Model):
         keyspace = cfg.get('KEYSPACE', 'indigo')
         session.set_keyspace(keyspace)
 
-        if "mimetype" in kwargs:
-            metadata = kwargs.get('metadata', {})
-            metadata["cdmi_mimetype"] = kwargs["mimetype"]
-            kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
-            del kwargs['mimetype']
+#         if "mimetype" in kwargs:
+#             metadata = kwargs.get('metadata', {})
+#             metadata["cdmi_mimetype"] = kwargs["mimetype"]
+#             kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
+#             del kwargs['mimetype']
 
         for arg in kwargs:
             # For static fields we can't use the name in the where condition
@@ -162,7 +172,7 @@ class TreeEntry(Model):
                  "identifier: '{}', "
                  "aceflags: {}, "
                  "acemask: {}"
-                 "}}").format(g.id,
+                 "}}").format(g.uuid,
                               cdmi_ace['acetype'].upper(),
                               ident,
                               cdmi_str_to_aceflag(cdmi_ace['aceflags']),
@@ -201,7 +211,7 @@ class TreeEntry(Model):
                 access[gid] = "write"
         ls_access = []
         for gid in access:
-            g = Group.find_by_id(gid)
+            g = Group.find_by_uuid(gid)
             if g:
                 ident = g.name
             elif gid.upper() == "AUTHENTICATED@":
@@ -221,4 +231,51 @@ class TreeEntry(Model):
         query = SimpleStatement("""UPDATE tree_entry SET container_acl={} 
             WHERE container=%s""".format(acl))
         session.execute(query, (self.container,))
+
+
+    def update_entry_acl(self, read_access, write_access):
+        """Replace the acl with the given list of access.
+        read_access: a list of groups id that have read access for this
+                     collection
+        write_access: a list of groups id that have write access for this
+                     collection
+        """
+        # The dictionary keys are the groups id for which we have an ACE
+        # We don't use aceflags yet, everything will be inherited by lower
+        # sub-collections
+        # acemask is set with helper (read/write - see indigo/models/acl/py)
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        access = {}
+        for gid in read_access:
+            access[gid] = "read"
+        for gid in write_access:
+            if gid in access:
+                access[gid] = "read/write"
+            else:
+                access[gid] = "write"
+        ls_access = []
+        for gid in access:
+            g = Group.find_by_uuid(gid)
+            if g:
+                ident = g.name
+            elif gid.upper() == "AUTHENTICATED@":
+                ident = "AUTHENTICATED@"
+            else:
+                # TODO log or return error if the identifier isn't found ?
+                continue
+            s = ("'{}': {{"
+                 "acetype: 'ALLOW', "
+                 "identifier: '{}', "
+                 "aceflags: {}, "
+                 "acemask: {}"
+                 "}}").format(gid, ident, 0, str_to_acemask(access[gid], False))
+            ls_access.append(s)
+        acl = "{{{}}}".format(", ".join(ls_access))
+
+        query = SimpleStatement("""UPDATE tree_entry SET acl={} 
+            WHERE container=%s and name=%s""".format(acl))
+        session.execute(query, (self.container, self.name,))
 

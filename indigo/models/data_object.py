@@ -38,6 +38,18 @@ from indigo.models.acl import (
 from indigo.util import default_cdmi_id
 
 
+static_fields = ["checksum",
+                 "size",
+                 "metadata",
+                 "mimetype",
+                 "alt_url",
+                 "create_ts",
+                 "modified_ts",
+                 "type",
+                 "acl",
+                 "treepath"]
+
+
 class DataObject(Model):
     """ The DataObject represents actual data objects, the tree structure
     merely references it.
@@ -53,8 +65,8 @@ class DataObject(Model):
     N.B. by default Cassandra compresses its data ( using LZW ), so we get that
     for free."""
     # The 'name' of the object
-    id = columns.Text(default=default_cdmi_id, required=True,
-                      partition_key=True)
+    uuid = columns.Text(default=default_cdmi_id, required=True,
+                        partition_key=True)
     #####################
     # These columns are the same (shared) between all entries with same id
     # (they use the static attribute , [ like an inode or a header ])
@@ -65,7 +77,7 @@ class DataObject(Model):
     mimetype = columns.Text(static=True)
     alt_url = columns.Set(columns.Text, static=True)
     create_ts = columns.DateTime(default=datetime.now, static=True)
-    modified_ts = columns.DateTime(static=True)
+    modified_ts = columns.DateTime(default=datetime.now, static=True)
     type = columns.Text(required=False, static=True, default='UNKNOWN')
     acl = columns.Map(columns.Text, columns.UserDefinedType(Ace), static=True)
     # A general aid to integrity ...
@@ -82,9 +94,9 @@ class DataObject(Model):
     #####################
 
     @classmethod
-    def append_chunk(cls, id, data, sequence_number, compressed=False):
+    def append_chunk(cls, uuid, data, sequence_number, compressed=False):
         """Create a new blob for an existing data_object"""
-        data_object = cls(id=id,
+        data_object = cls(uuid=uuid,
                           sequence_number=sequence_number,
                           blob=data,
                           compressed=compressed)
@@ -98,7 +110,7 @@ class DataObject(Model):
         a chunk at a time.  The value yielded is the size of
         the chunk and the content chunk itself.
         """
-        entries = DataObject.objects.filter(id=self.id)
+        entries = DataObject.objects.filter(uuid=self.uuid)
         for entry in entries:
             if entry.compressed:
                 data = StringIO(entry.blob)
@@ -115,10 +127,13 @@ class DataObject(Model):
     def create(cls, data, compressed=False):
         """data: initial data"""
         new_id = default_cdmi_id()
-        data_object = cls(id=new_id,
+        now = datetime.now()
+        data_object = cls(uuid=new_id,
                           sequence_number=0,
                           blob=data,
-                          compressed=compressed)
+                          compressed=compressed,
+                          created_ts=now,
+                          modified_ts=now)
         data_object.save()
         return data_object
 
@@ -135,18 +150,44 @@ class DataObject(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'indigo')
         session.set_keyspace(keyspace)
-        query = SimpleStatement("""DELETE FROM data_object WHERE id=%s""")
+        query = SimpleStatement("""DELETE FROM data_object WHERE uuid=%s""")
         session.execute(query, (uuid,))
 
 
     @classmethod
     def find(cls, uuid):
         """Find an object by uuid"""
-        entries = cls.objects.filter(id=uuid)
+        entries = cls.objects.filter(uuid=uuid)
         if not entries:
             return None
         else:
             return entries.first()
+
+
+    def update(self, **kwargs):
+        """Update a data object"""
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+
+#         if "mimetype" in kwargs:
+#             metadata = kwargs.get('metadata', {})
+#             metadata["cdmi_mimetype"] = kwargs["mimetype"]
+#             kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
+#             del kwargs['mimetype']
+
+        for arg in kwargs:
+            # For static fields we can't use the name in the where condition
+            if arg in static_fields:
+                query = SimpleStatement("""UPDATE data_object SET {}=%s
+                    WHERE uuid=%s""".format(arg))
+                session.execute(query, (kwargs[arg], self.uuid))
+            else:
+                query = SimpleStatement("""UPDATE data_object SET {}=%s
+                    WHERE uuid=%s and sequence_number=%s""".format(arg))
+                session.execute(query, (kwargs[arg], self.container, self.sequence_number))
+        return self
 
 
     def update_acl(self, read_access, write_access):
@@ -175,7 +216,7 @@ class DataObject(Model):
                 access[gid] = "write"
         ls_access = []
         for gid in access:
-            group = Group.find_by_id(gid)
+            group = Group.find_by_uuid(gid)
             if group:
                 ident = group.name
             elif gid.upper() == "AUTHENTICATED@":
@@ -192,10 +233,10 @@ class DataObject(Model):
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
         query = ("UPDATE {}.data_object SET acl = acl + {}"
-                 "WHERE id='{}'").format(
+                 "WHERE uuid='{}'").format(
             keyspace,
             acl,
-            self.id)
+            self.uuid)
         connection.execute(query)
 
 
@@ -225,7 +266,7 @@ class DataObject(Model):
                  "identifier: '{}', "
                  "aceflags: {}, "
                  "acemask: {}"
-                 "}}").format(group.id,
+                 "}}").format(group.uuid,
                               cdmi_ace['acetype'].upper(),
                               ident,
                               cdmi_str_to_aceflag(cdmi_ace['aceflags']),
@@ -234,6 +275,6 @@ class DataObject(Model):
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
         query = """UPDATE data_object SET acl={}
-            WHERE id='{}'""".format(acl, self.id)
+            WHERE uuid='{}'""".format(acl, self.uuid)
         session.execute(query)
 

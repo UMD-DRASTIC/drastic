@@ -61,7 +61,7 @@ def user_list(cfg):
     """Print user list"""
     from indigo.models import User
     for user in User.objects.all():
-        print "Username: {}, ID: {}".format(user.name, user.id)
+        print "Username: {}, ID: {}".format(user.name, user.uuid)
 
 
 # noinspection PyUnusedLocal
@@ -107,7 +107,7 @@ def group_add(cfg, args):
         print "A group with that name already exists"
         return
 
-    print "Created group '{}' with id: {}".format(name, group.id)
+    print "Created group '{}' with id: {}".format(name, group.uuid)
 
 
 # noinspection PyUnusedLocal
@@ -121,7 +121,7 @@ def group_delete(cfg, args):
     group = Group.find(args[0])
     group.delete()
 
-    print "Deleted group '{}' with id: {}".format(group.name, group.id)
+    print "Deleted group '{}' with id: {}".format(group.name, group.uuid)
 
 
 # noinspection PyUnusedLocal
@@ -135,8 +135,8 @@ def group_add_user(cfg, args):
     group_name, username = args
     user = User.find(username)
     group = Group.find(group_name)
-    if group.id not in user.groups:
-        user.groups.append(group.id)
+    if group.uuid not in user.groups:
+        user.groups.append(group.uuid)
         user.update(groups=user.groups)
 
     print "Added {} to {}".format(user.name, group.name)
@@ -147,10 +147,10 @@ def group_list(cfg):
     """Print groups"""
     from indigo.models.group import Group
     for group in Group.objects.all():
-        print "Name: {}, ID: {}".format(group.name, group.id)
+        print "Name: {}, ID: {}".format(group.name, group.uuid)
         for user in group.get_users():
             print ".ID: {}\tUsername: {}\tAdministrator:{}".format(
-                user.id, user.name, ("N", "Y")[user.administrator])
+                user.uuid, user.name, ("N", "Y")[user.administrator])
 
 
 def main():
