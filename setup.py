@@ -33,7 +33,7 @@ setup(
     license="Apache License, Version 2.0",
     url='https://bitbucket.org/archivea/libindigo',
     install_requires=[
-        "cassandra-driver==2.5.1",
+        "cassandra-driver==3.2.2",
         "passlib==1.6.2",
         "nose==1.3.6",
         "blist==1.3.6",
