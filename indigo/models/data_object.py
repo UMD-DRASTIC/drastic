@@ -100,7 +100,6 @@ class DataObject(Model):
                           sequence_number=sequence_number,
                           blob=data,
                           compressed=compressed)
-        data_object.save()
         return data_object
 
 
@@ -128,14 +127,16 @@ class DataObject(Model):
         """data: initial data"""
         new_id = default_cdmi_id()
         now = datetime.now()
-        data_object = cls(uuid=new_id,
-                          sequence_number=0,
-                          blob=data,
-                          compressed=compressed,
-                          created_ts=now,
-                          modified_ts=now)
-        data_object.save()
-        return data_object
+        kwargs = {
+            "uuid": new_id,
+            "sequence_number": 0,
+            "blob": data,
+            "compressed": compressed,
+            "create_ts": now,
+            "modified_ts": now
+        }
+        new = super(DataObject, cls).create(**kwargs)
+        return new
 
 
     def create_acl(self, read_access, write_access):

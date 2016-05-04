@@ -81,21 +81,25 @@ class Collection(object):
         collection = Collection.find(path)
         if collection is not None:
             raise CollectionConflictError(container)
+        now = datetime.now()
+        # If we try to create a tree enry with no metadata, cassandra-driver
+        # will fail as it tries to delete a static column
         if metadata:
             metadata = meta_cdmi_to_cassandra(metadata)
-        now = datetime.now()
-        coll_entry = TreeEntry.create(container=path,
-                                      name='.',
-                                      container_create_ts=now,
-                                      container_modified_ts=now,
-                                      container_metadata=metadata)
-        coll_entry.save()
-        coll_entry.uuid = coll_entry.container_uuid
-        coll_entry.save()
+            coll_entry = TreeEntry.create(container=path,
+                                          name='.',
+                                          container_create_ts=now,
+                                          container_modified_ts=now,
+                                          container_metadata=metadata)
+        else:
+            coll_entry = TreeEntry.create(container=path,
+                                          name='.',
+                                          container_create_ts=now,
+                                          container_modified_ts=now)
+        coll_entry.update(uuid=coll_entry.container_uuid)
         child_entry = TreeEntry.create(container=container,
                                        name=name + '/',
                                        uuid=coll_entry.container_uuid)
-        child_entry.save()
         new = Collection.find(path)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
@@ -117,9 +121,7 @@ class Collection(object):
                                       name='.',
                                       container_create_ts=now,
                                       container_modified_ts=now)
-        root_entry.save()
-        root_entry.uuid = root_entry.container_uuid
-        root_entry.save()
+        root_entry.update(uuid=root_entry.container_uuid)
         root_entry.add_default_acl()
         return root_entry
 

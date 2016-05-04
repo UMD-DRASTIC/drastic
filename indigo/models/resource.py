@@ -127,12 +127,16 @@ class Resource(object):
         else:
             obj_id = url.replace("cassandra://", "")
             data_obj = DataObject.find(obj_id)
-            data_obj.mimetype = mimetype
-            data_obj.metadata = metadata
-            data_obj.save()
+            print data_obj
+            print obj_id
+            if metadata:
+                data_obj.update(mimetype=mimetype,
+                                metadata=metadata)
+            else:
+                data_obj.update(mimetype=mimetype)
 
         data_entry = TreeEntry.create(**kwargs)
-        data_entry.save()
+        print data_entry
         new = Resource(data_entry)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)

@@ -77,6 +77,7 @@ class User(Model):
         payload = user.mqtt_payload({}, state)
         # user_uuid is the id of the user who did the operation
         # user.uuid is the id of the new user
+        print user_uuid, user.uuid
         Notification.create_user(user_uuid, user.uuid, payload)
         return user
 

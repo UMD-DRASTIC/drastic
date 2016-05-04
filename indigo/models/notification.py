@@ -24,6 +24,7 @@ import paho.mqtt.publish as publish
 import logging
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
+from cassandra.util import uuid_from_time
 
 from indigo.util import (
     datetime_serializer,
@@ -45,7 +46,7 @@ OBJ_GROUP = "group"               # id
 
 def default_time():
     """Generate a TimeUUID from the current local date and time"""
-    return columns.TimeUUID.from_datetime(datetime.now())
+    return uuid_from_time(datetime.now())
 
 
 def default_date():
@@ -202,14 +203,14 @@ class Notification(Model):
         try:
             publish.single(topic, payload)
         except:
-            notification.processed = False
-            notification.save()
+            notification.update(processed=False)
             logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
 
 
     @classmethod
     def new(cls, **kwargs):
         """Create"""
+        print kwargs
         new = super(Notification, cls).create(**kwargs)
         return new
 

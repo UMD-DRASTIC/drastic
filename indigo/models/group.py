@@ -88,7 +88,6 @@ class Group(Model):
         for u in User.objects.all():
             if self.uuid in u.groups:
                 u.groups.remove(self.uuid)
-                u.save()
         super(Group, self).delete()
         payload = self.mqtt_payload(state, {})
         Notification.delete_group(user_uuid, self.uuid, payload)
