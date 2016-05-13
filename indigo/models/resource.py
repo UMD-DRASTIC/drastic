@@ -93,7 +93,7 @@ class Resource(object):
 
     @classmethod
     def create(cls, container, name, uuid=None, metadata=None,
-               url=None, mimetype=None, user_uuid=None):
+               url=None, mimetype=None, user_uuid=None, size=None):
         """Create a new resource in the tree_entry table"""
         from indigo.models import Collection
         from indigo.models import Notification
@@ -127,16 +127,16 @@ class Resource(object):
         else:
             obj_id = url.replace("cassandra://", "")
             data_obj = DataObject.find(obj_id)
-            print data_obj
-            print obj_id
             if metadata:
                 data_obj.update(mimetype=mimetype,
                                 metadata=metadata)
             else:
-                data_obj.update(mimetype=mimetype)
+                if mimetype:
+                    data_obj.update(mimetype=mimetype)
+                if size:
+                    data_obj.update(size=size)
 
         data_entry = TreeEntry.create(**kwargs)
-        print data_entry
         new = Resource(data_entry)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)

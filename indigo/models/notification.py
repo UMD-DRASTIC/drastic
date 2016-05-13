@@ -210,7 +210,6 @@ class Notification(Model):
     @classmethod
     def new(cls, **kwargs):
         """Create"""
-        print kwargs
         new = super(Notification, cls).create(**kwargs)
         return new
 

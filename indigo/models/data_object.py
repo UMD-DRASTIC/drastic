@@ -100,6 +100,7 @@ class DataObject(Model):
                           sequence_number=sequence_number,
                           blob=data,
                           compressed=compressed)
+        data_object.save()
         return data_object
 
 
