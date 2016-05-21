@@ -61,7 +61,7 @@ class Collection(object):
         self.uuid = self.entry.uuid
         self.create_ts = self.entry.container_create_ts
         self.modified_ts = self.entry.container_modified_ts
-        self.acl = self.entry.acl
+        self.acl = self.entry.container_acl
         self.metadata = self.entry.container_metadata
 
 
@@ -139,7 +139,7 @@ class Collection(object):
         session.execute(query, (self.path,))
         # Get the row that describe the collection as a child of its parent
         child = TreeEntry.objects.filter(container=self.container,
-                                           name="{}/".format(self.name)).first()
+                                           name=u"{}/".format(self.name)).first()
         if child:
             child.delete()
         state = self.mqtt_get_state()

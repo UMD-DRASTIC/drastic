@@ -60,6 +60,9 @@ class Resource(object):
         self.name = self.entry.name
         self.is_reference = is_reference(self.url)
         self.uuid = self.entry.uuid
+        self.mimetype = None
+        self.metadata = {}
+        self.acl = {}
         if not self.is_reference:
             self.obj_id = self.url.replace("cassandra://", "")
             self.obj = DataObject.find(self.obj_id)
@@ -72,6 +75,7 @@ class Resource(object):
                 self.checksum = self.obj.checksum
                 self.size = self.obj.size
         else:
+            self.obj = None
             self.metadata = self.entry.metadata
             self.mimetype = self.entry.mimetype
             self.acl = self.entry.acl
@@ -260,7 +264,7 @@ class Resource(object):
         append a trailing '?' on the resource name"""
         # References are object whose url doesn't start with 'cassandra://'
         if self.is_reference:
-            return "{}?".format(self.name)
+            return u"{}?".format(self.name)
         else:
             return self.name
 

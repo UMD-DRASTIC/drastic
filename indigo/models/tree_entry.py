@@ -136,11 +136,11 @@ class TreeEntry(Model):
         for arg in kwargs:
             # For static fields we can't use the name in the where condition
             if arg in static_fields:
-                query = SimpleStatement("""UPDATE tree_entry SET {}=%s
+                query = SimpleStatement(u"""UPDATE tree_entry SET {}=%s
                     WHERE container=%s""".format(arg))
                 session.execute(query, (kwargs[arg], self.container))
             else:
-                query = SimpleStatement("""UPDATE tree_entry SET {}=%s
+                query = SimpleStatement(u"""UPDATE tree_entry SET {}=%s
                     WHERE container=%s and name=%s""".format(arg))
                 session.execute(query, (kwargs[arg], self.container, self.name))
         return self
@@ -180,7 +180,7 @@ class TreeEntry(Model):
                              )
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
-        query = """UPDATE tree_entry SET container_acl={}
+        query = u"""UPDATE tree_entry SET container_acl={}
             WHERE container='{}'""".format(acl,
                                            self.container.replace("'", "\''"))
         session.execute(query)
@@ -228,7 +228,7 @@ class TreeEntry(Model):
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
 
-        query = SimpleStatement("""UPDATE tree_entry SET container_acl={} 
+        query = SimpleStatement(u"""UPDATE tree_entry SET container_acl={} 
             WHERE container=%s""".format(acl))
         session.execute(query, (self.container,))
 
@@ -275,7 +275,7 @@ class TreeEntry(Model):
             ls_access.append(s)
         acl = "{{{}}}".format(", ".join(ls_access))
 
-        query = SimpleStatement("""UPDATE tree_entry SET acl={} 
+        query = SimpleStatement(u"""UPDATE tree_entry SET acl={} 
             WHERE container=%s and name=%s""".format(acl))
         session.execute(query, (self.container, self.name,))
 

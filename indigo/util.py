@@ -360,7 +360,7 @@ def meta_cdmi_to_cassandra(metadata):
         # Convert str to unicode
         if isinstance(value, str):
             value = unicode(value)
-        d[key] = json.dumps({"json": value})
+        d[key] = json.dumps({"json": value}, ensure_ascii=False)
     return d
 
 
