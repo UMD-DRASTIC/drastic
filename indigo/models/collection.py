@@ -21,7 +21,9 @@ from cassandra.query import SimpleStatement
 import json
 
 from indigo import get_config
-from indigo.models import TreeEntry
+from indigo.models import (
+    TreeEntry
+)
 from indigo.models.acl import (
     acemask_to_str,
     serialize_acl_metadata
@@ -60,9 +62,6 @@ class Collection(object):
         self.container, _ = split(self.path)
         self.uuid = self.entry.uuid
         self.create_ts = self.entry.container_create_ts
-        self.modified_ts = self.entry.container_modified_ts
-        self.acl = self.entry.container_acl
-        self.metadata = self.entry.container_metadata
 
 
     @classmethod
@@ -104,6 +103,8 @@ class Collection(object):
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
         Notification.create_collection(user_uuid, path, payload)
+        # Index the collection
+        new.index()
         return new
 
 
@@ -145,6 +146,7 @@ class Collection(object):
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
         Notification.delete_collection(user_uuid, self.path, payload)
+        self.reset()
 
 
     @classmethod
@@ -185,7 +187,7 @@ class Collection(object):
         """"Get available actions for user according to a group"""
         # Check permission on the parent container if there's no action
         # defined at this level
-        if not self.acl:
+        if not self.entry.container_acl:
             if self.is_root:
                 return set([])
             else:
@@ -193,8 +195,8 @@ class Collection(object):
                 return parent_container.get_authorized_actions(user)
         actions = set([])
         for gid in user.groups + ["AUTHENTICATED@"]:
-            if gid in self.acl:
-                ace = self.acl[gid]
+            if gid in self.entry.container_acl:
+                ace = self.entry.container_acl[gid]
                 level = acemask_to_str(ace.acemask, False)
                 if level == "read":
                     actions.add("read")
@@ -227,18 +229,22 @@ class Collection(object):
 
     def get_cdmi_metadata(self):
         """Return a dictionary of metadata"""
-        return meta_cassandra_to_cdmi(self.metadata)
+        return meta_cassandra_to_cdmi(self.entry.container_metadata)
 
 
     def get_list_metadata(self):
         """Transform metadata to a list of couples for web ui"""
-        return metadata_to_list(self.metadata)
+        return metadata_to_list(self.entry.container_metadata)
 
 
     def get_metadata_key(self, key):
         """Return the value of a metadata"""
-        return decode_meta(self.metadata.get(key, ""))
+        return decode_meta(self.entry.container_metadata.get(key, ""))
 
+    def index(self):
+        from indigo.models import SearchIndex
+        self.reset()
+        SearchIndex.index(self, ['name', 'metadata'])
 
     def mqtt_get_state(self):
         """Get the collection state for the payload"""
@@ -247,7 +253,7 @@ class Collection(object):
         payload['container'] = self.container
         payload['name'] = self.name
         payload['create_ts'] = self.create_ts
-        payload['modified_ts'] = self.modified_ts
+        payload['modified_ts'] = self.entry.container_modified_ts
         payload['metadata'] = self.get_cdmi_metadata()
         return payload
 
@@ -264,7 +270,7 @@ class Collection(object):
         """Return two list of groups id which have read and write access"""
         read_access = []
         write_access = []
-        for gid, ace in self.acl.items():
+        for gid, ace in self.entry.container_acl.items():
             oper = acemask_to_str(ace.acemask, False)
             if oper == "read":
                 read_access.append(gid)
@@ -278,6 +284,9 @@ class Collection(object):
                 pass
         return read_access, write_access
 
+    def reset(self):
+        from indigo.models import SearchIndex
+        SearchIndex.reset(self.path)
 
     def to_dict(self, user=None):
         """Return a dictionary which describes a collection for the web ui"""
@@ -318,7 +327,7 @@ class Collection(object):
         post_state = coll.mqtt_get_state()
         payload = coll.mqtt_payload(pre_state, post_state)
         Notification.update_collection(user_uuid, coll.path, payload)
-        return self
+        coll.index()
 
 
     def update_acl(self, read_access, write_access):

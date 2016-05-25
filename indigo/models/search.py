@@ -29,20 +29,19 @@ from cassandra.cqlengine.models import Model
 import logging
 
 from indigo.util import default_uuid
-from indigo.models.id_search import IDSearch
 
 class SearchIndex(Model):
     """SearchIndex Model"""
     term = columns.Text(required=True, primary_key=True)
     term_type = columns.Text(required=True, primary_key=True)
     object_path = columns.Text(required=True, primary_key=True)
-    object_id = columns.Text(required=True)
     object_type = columns.Text(required=True)
-    id = columns.Text(default=default_uuid)
+    uuid = columns.Text(default=default_uuid)
 
     @classmethod
     def create(cls, **kwargs):
         """Create a new indexed term"""
+        from indigo.models import IDSearch
         idx = super(SearchIndex, cls).create(**kwargs)
 
         # Create a row in the ID search table
@@ -87,11 +86,10 @@ class SearchIndex(Model):
                 results.append(get_object(result, user))
             except AttributeError:
                 logging.warning(u"Problem with SearchIndex('{}','{}','{}','{}')".format(
-                                result.id,
+                                result.uuid,
                                 result.term,
                                 result.object_type,
-                                result.object_id))
-
+                                result.uuid))
         results = [x for x in results if x]
 
         # Do some sane ordering here to group together by ID and
@@ -123,6 +121,7 @@ class SearchIndex(Model):
     @classmethod
     def reset(cls, object_path):
         """Delete objects from the SearchIndex"""
+        from indigo.models import IDSearch
         rows = IDSearch.find(object_path)
         for id_obj in rows:
             obj = cls.objects.filter(term=id_obj.term,
@@ -153,7 +152,7 @@ class SearchIndex(Model):
 
         terms = []
         if 'metadata' in fields:
-            metadata = object.get_metadata()
+            metadata = object.get_cdmi_metadata()
             # Metadata are stored as json string, get_metadata() returns it as
             # a Python dictionary
             for k, v in metadata.iteritems():

@@ -60,27 +60,11 @@ class Resource(object):
         self.name = self.entry.name
         self.is_reference = is_reference(self.url)
         self.uuid = self.entry.uuid
-        self.mimetype = None
-        self.metadata = {}
-        self.acl = {}
         if not self.is_reference:
             self.obj_id = self.url.replace("cassandra://", "")
             self.obj = DataObject.find(self.obj_id)
-            if self.obj:
-                self.metadata = self.obj.metadata
-                self.mimetype = self.obj.mimetype
-                self.acl = self.obj.acl
-                self.create_ts = self.obj.create_ts
-                self.modified_ts = self.obj.modified_ts
-                self.checksum = self.obj.checksum
-                self.size = self.obj.size
         else:
             self.obj = None
-            self.metadata = self.entry.metadata
-            self.mimetype = self.entry.mimetype
-            self.acl = self.entry.acl
-            self.create_ts = self.entry.create_ts
-            self.modified_ts = self.entry.modified_ts
 
 
     def __unicode__(self):
@@ -145,6 +129,8 @@ class Resource(object):
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
         Notification.create_resource(user_uuid, path, payload)
+        # Index the resource
+        new.index()
         return new
 
 
@@ -165,6 +151,7 @@ class Resource(object):
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
         Notification.delete_resource(user_uuid, self.path, payload)
+        self.reset()
 
 
     def delete_blobs(self):
@@ -194,21 +181,32 @@ class Resource(object):
             "metadata": self.get_list_metadata(),
             "url": self.url,
             "is_reference": self.is_reference,
-            "mimetype": self.mimetype or "application/octet-stream",
-            "type": self.mimetype,
-            "create_ts": self.create_ts,
-            "modified_ts": self.modified_ts
+            "mimetype": self.get_mimetype() or "application/octet-stream",
+            "type": self.get_mimetype(),
+            "create_ts": self.get_create_ts(),
+            "modified_ts": self.get_modified_ts()
         }
         # Add fields when the object isn't a reference
         if self.obj:
-            data["checksum"] = self.checksum
-            data["size"] = self.size
+            data["checksum"] = self.get_checksum()
+            data["size"] = self.get_size()
         if user:
             data['can_read'] = self.user_can(user, "read")
             data['can_write'] = self.user_can(user, "write")
             data['can_edit'] = self.user_can(user, "edit")
             data['can_delete'] = self.user_can(user, "delete")
         return data
+
+
+    def get_acl(self):
+        if self.is_reference:
+            return self.entry.acl
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return self.entry.acl
+            return self.obj.acl
 
 
     def get_acl_metadata(self):
@@ -220,14 +218,15 @@ class Resource(object):
         """"Get available actions for user according to a group"""
         # Check permission on the parent container if there's no action
         # defined at this level
-        if not self.acl:
+        acl = self.get_acl()
+        if not acl:
             from indigo.models import Collection
             parent_container = Collection.find(self.container)
             return parent_container.get_authorized_actions(user)
         actions = set([])
         for gid in user.groups:
-            if gid in self.acl:
-                ace = self.acl[gid]
+            if gid in acl:
+                ace = acl[gid]
                 level = acemask_to_str(ace.acemask, True)
                 if level == "read":
                     actions.add("read")
@@ -246,17 +245,72 @@ class Resource(object):
     def get_cdmi_metadata(self):
         """Return the metadata associated to the object as a CDMI dictionary
         """
-        return meta_cassandra_to_cdmi(self.metadata)
+        return meta_cassandra_to_cdmi(self.get_metadata())
+
+
+    def get_checksum(self):
+        if self.is_reference:
+            return None
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return None
+            return self.obj.checksum
+
+
+    def get_create_ts(self):
+        if self.is_reference:
+            return self.entry.create_ts
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return self.entry.create_ts
+            return self.obj.create_ts
 
 
     def get_list_metadata(self):
         """Transform metadata to a list of couples for web ui"""
-        return metadata_to_list(self.metadata)
+        return metadata_to_list(self.get_metadata())
+
+
+    def get_metadata(self):
+        if self.is_reference:
+            return self.entry.metadata
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return self.entry.metadata
+            return self.obj.metadata
 
 
     def get_metadata_key(self, key):
         """Return the value of a metadata"""
-        return decode_meta(self.metadata.get(key, ""))
+        return decode_meta(self.get_metadata().get(key, ""))
+
+
+    def get_mimetype(self):
+        if self.is_reference:
+            return self.entry.mimetype
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return self.entry.mimetype
+            return self.obj.mimetype
+
+
+    def get_modified_ts(self):
+        if self.is_reference:
+            return self.entry.modified_ts
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return self.entry.modified_ts
+            return self.obj.modified_ts
 
 
     def get_name(self):
@@ -274,6 +328,23 @@ class Resource(object):
         return self.path
 
 
+    def get_size(self):
+        if self.is_reference:
+            return 0
+        else:
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
+                if self.obj is None:
+                    return 0
+            return self.obj.size
+
+
+    def index(self):
+        from indigo.models import SearchIndex
+        self.reset()
+        SearchIndex.index(self, ['name', 'metadata'])
+
+
     def mqtt_get_state(self):
         """Get the resource state for the payload"""
         payload = dict()
@@ -281,9 +352,9 @@ class Resource(object):
         payload['url'] = self.url
         payload['container'] = self.container
         payload['name'] = self.get_name()
-        payload['create_ts'] = self.create_ts
-        payload['modified_ts'] = self.modified_ts
-        payload['metadata'] = meta_cassandra_to_cdmi(self.metadata)
+        payload['create_ts'] = self.get_create_ts()
+        payload['modified_ts'] = self.get_modified_ts()
+        payload['metadata'] = self.get_cdmi_metadata()
         return payload
 
 
@@ -299,7 +370,7 @@ class Resource(object):
         """Return two list of groups id which have read and write access"""
         read_access = []
         write_access = []
-        for gid, ace in self.acl.items():
+        for gid, ace in self.get_acl().items():
             oper = acemask_to_str(ace.acemask, True)
             if oper == "read":
                 read_access.append(gid)
@@ -314,6 +385,11 @@ class Resource(object):
         return read_access, write_access
 
 
+    def reset(self):
+        from indigo.models import SearchIndex
+        SearchIndex.reset(self.path)
+
+
     def simple_dict(self, user=None):
         """Return a dictionary which describes a resource for the web ui"""
         data = {
@@ -322,8 +398,8 @@ class Resource(object):
             "container": self.container,
             "path": self.path,
             "is_reference": self.is_reference,
-            "mimetype": self.mimetype or "application/octet-stream",
-            "type": self.mimetype,
+            "mimetype": self.get_mimetype() or "application/octet-stream",
+            "type": self.get_mimetype(),
         }
         if user:
             data['can_read'] = self.user_can(user, "read")
@@ -331,6 +407,10 @@ class Resource(object):
             data['can_edit'] = self.user_can(user, "edit")
             data['can_delete'] = self.user_can(user, "delete")
         return data
+
+
+    def to_dict(self, user=None):
+        return self.simple_dict(user)
 
 
     def update(self, **kwargs):
@@ -355,7 +435,8 @@ class Resource(object):
         post_state = resc.mqtt_get_state()
         payload = resc.mqtt_payload(pre_state, post_state)
         Notification.update_resource(user_uuid, resc.path, payload)
-        return self
+        # Index the resource
+        resc.index()
 
 
     def update_cdmi_acl(self, cdmi_acl):
