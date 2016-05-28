@@ -97,7 +97,10 @@ class User(Model):
     @classmethod
     def find_by_uuid(cls, idstring):
         """Find a user from his id"""
-        return cls.objects.filter(uuid=idstring).first()
+        if idstring:
+            return cls.objects.filter(uuid=idstring).first()
+        else:
+            return None
 
     def __unicode__(self):
         return unicode(self.name)

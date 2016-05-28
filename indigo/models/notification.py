@@ -20,12 +20,18 @@ from datetime import (
     datetime,
     timedelta
 )
+import json
 import paho.mqtt.publish as publish
 import logging
 from cassandra.cqlengine import columns
-from cassandra.cqlengine.models import Model
+from cassandra.cqlengine.models import (
+    connection,
+    Model
+    )
+from cassandra.query import SimpleStatement
 from cassandra.util import uuid_from_time
 
+from indigo import get_config
 from indigo.util import (
     datetime_serializer,
 )
@@ -42,6 +48,90 @@ OBJ_RESOURCE = "resource"         # path
 OBJ_COLLECTION = "collection"     # path
 OBJ_USER = "user"                 # id
 OBJ_GROUP = "group"               # id
+
+TEMPLATES = {
+    OP_CREATE : {},
+    OP_DELETE : {},
+    OP_UPDATE : {},
+    OP_INDEX : {},
+    OP_MOVE : {}
+}
+
+TEMPLATES[OP_CREATE][OBJ_RESOURCE] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new item '<a href='{% url "archive:resource_view" path=object.path %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+
+"""
+TEMPLATES[OP_CREATE][OBJ_COLLECTION] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new collection '<a href='{% url "archive:view" path=object.path %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_CREATE][OBJ_USER] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new user '<a href='{% url "users:view" uuid=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_CREATE][OBJ_GROUP] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new group '<a href='{% url "groups:view" uuid=object.uuid %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+
+TEMPLATES[OP_DELETE][OBJ_RESOURCE] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted the '{{ object.name }}' item</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_DELETE][OBJ_COLLECTION] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted the collection '{{ object.name }}'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_DELETE][OBJ_USER] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted user '{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_DELETE][OBJ_GROUP] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted group '{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+
+TEMPLATES[OP_UPDATE][OBJ_RESOURCE] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited the '<a href='{% url "archive:resource_view" path=object.path %}'>{{ object.name }}</a>' item</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_UPDATE][OBJ_COLLECTION] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited the '<a href='{% url "archive:view" path=object.path %}'>{{ object.name }}</a>' collection </span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_UPDATE][OBJ_USER] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited user '<a href='{% url "users:view" uuid=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_UPDATE][OBJ_GROUP] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited group '<a href='{% url "groups:view" uuid=object.uuid %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
 
 
 def default_time():
@@ -63,16 +153,18 @@ def last_x_days(days=5):
 
 class Notification(Model):
     """Notification Model"""
+    date = columns.Text(default=default_date, partition_key=True)
     # The type of operation (Create, Delete, Update, Index, Move...)
     operation = columns.Text(primary_key=True)
-    when = columns.TimeUUID(primary_key=True,
-                            default=default_time,
-                            clustering_order="DESC")
     # The type of the object concerned (Collection, Resource, User, Group, ...)
     object_type = columns.Text(primary_key=True)
     # The uuid of the object concerned, the key used to find the corresponding
     # object (path, uuid, ...)
     object_uuid = columns.Text(primary_key=True)
+    when = columns.TimeUUID(primary_key=True,
+                            default=default_time,
+                            clustering_order="DESC")
+    
     # The user who initiates the operation
     user_uuid = columns.Text()
     # True if the corresponding worklow has been executed correctly (for Move
@@ -191,6 +283,10 @@ class Notification(Model):
         return new
 
 
+    def tmpl(self):
+        return TEMPLATES[self.operation][self.object_type]
+
+
     @classmethod
     def mqtt_publish(cls, notification, operation, object_type, object_uuid, payload):
         topic = u'{0}/{1}/{2}'.format(operation, object_type, object_uuid)
@@ -217,8 +313,42 @@ class Notification(Model):
     @classmethod
     def recent(cls, count=20):
         """Return the last activities"""
-        return Notification.objects.filter(id__in=last_x_days())\
-            .order_by("-when").all().limit(count)
+#         return Notification.objects.filter(date__in=last_x_days())\
+#             .order_by("-when").all().limit(count)
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        # I couldn't find how to disable paging in cqlengine in the "model" view
+        # so I create the cal query directly
+        query = SimpleStatement(u"""SELECT * from Notification WHERE
+            date IN ({})
+            ORDER BY when DESC
+            limit {}""".format(
+                ",".join(["'%s'" % el for el in last_x_days()]),
+                count)
+            )
+        # Disable paging for this query (we use IN and ORDER BY in the same
+        # query
+        query.fetch_size = None
+        res = []
+        for row in session.execute(query):
+            res.append(Notification(**row).to_dict())
+        return res
+
+    def to_dict(self, user=None):
+        """Return a dictionary which describes a notification for the web ui"""
+        data = {
+            'date': self.date,
+            'when': self.when,
+            'operation': self.operation,
+            'object_type': self.object_type,
+            'object_uuid': self.object_uuid,
+            'user_uuid': self.user_uuid,
+            'tmpl': self.tmpl(),
+            'payload': json.loads(self.payload)
+        }
+        return data
 
 
     @classmethod
