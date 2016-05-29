@@ -154,6 +154,9 @@ def last_x_days(days=5):
 class Notification(Model):
     """Notification Model"""
     date = columns.Text(default=default_date, partition_key=True)
+    when = columns.TimeUUID(primary_key=True,
+                            default=default_time,
+                            clustering_order="DESC")
     # The type of operation (Create, Delete, Update, Index, Move...)
     operation = columns.Text(primary_key=True)
     # The type of the object concerned (Collection, Resource, User, Group, ...)
@@ -161,9 +164,6 @@ class Notification(Model):
     # The uuid of the object concerned, the key used to find the corresponding
     # object (path, uuid, ...)
     object_uuid = columns.Text(primary_key=True)
-    when = columns.TimeUUID(primary_key=True,
-                            default=default_time,
-                            clustering_order="DESC")
     
     # The user who initiates the operation
     user_uuid = columns.Text()
