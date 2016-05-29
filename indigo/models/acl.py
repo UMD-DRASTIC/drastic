@@ -258,7 +258,7 @@ def serialize_acl_metadata(obj):
     # lists)
     from indigo.models.resource import Resource
     is_object = isinstance(obj, Resource)
-    acl = obj.acl
+    acl = obj.get_acl()
     mapped_md = []
     # Create a list of ACE from the dictionary we created
     for _, ace in acl.items():

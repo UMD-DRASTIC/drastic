@@ -178,6 +178,11 @@ class Collection(object):
             return cls(entries.first())
 
 
+    def get_acl(self):
+        """Return a dictionary of acl based on the Collection schema"""
+        return self.entry.container_acl
+
+
     def get_acl_metadata(self):
         """Return a dictionary of acl based on the Collection schema"""
         return serialize_acl_metadata(self)
