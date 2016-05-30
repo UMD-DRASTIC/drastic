@@ -292,6 +292,11 @@ class Resource(object):
 
 
     def get_mimetype(self):
+#         if self.resource.get_mimetype():
+#             return self.resource.get_mimetype()
+#         mimetype = self.resource.get_metadata_key('cdmi_mimetype')
+#         if mimetype:
+#             return mimetype
         if self.is_reference:
             return self.entry.mimetype
         else:
