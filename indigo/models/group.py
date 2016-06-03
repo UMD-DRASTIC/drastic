@@ -35,8 +35,8 @@ from indigo.util import (
 
 class Group(Model):
     """Group Model"""
-    uuid = columns.Text(primary_key=True, default=default_uuid)
-    name = columns.Text(required=True, index=True)
+    uuid = columns.Text(default=default_uuid)
+    name = columns.Text(primary_key=True, required=True)
 #     owner = columns.Text(required=True)
 
     @classmethod
@@ -45,11 +45,11 @@ class Group(Model):
         exists"""
         from indigo.models import Notification
         kwargs['name'] = kwargs['name'].strip()
-        if 'user_uuid' in kwargs:
-            user_uuid = kwargs['user_uuid']
-            del kwargs['user_uuid']
+        if 'username' in kwargs:
+            username = kwargs['username']
+            del kwargs['username']
         else:
-            user_uuid = None
+            username = None
         # Make sure name id not in use.
         existing = cls.objects.filter(name=kwargs['name']).first()
         if existing:
@@ -57,9 +57,7 @@ class Group(Model):
         grp = super(Group, cls).create(**kwargs)
         state = grp.mqtt_get_state()
         payload = grp.mqtt_payload({}, state)
-        # user_uuid is the id of the user who did the operation
-        # user.uuid is the id of the new user
-        Notification.create_group(user_uuid, grp.uuid, payload)
+        Notification.create_group(username, grp.name, payload)
         return grp
 
     @classmethod
@@ -68,29 +66,24 @@ class Group(Model):
         return cls.objects.filter(name=name).first()
 
     @classmethod
-    def find_by_uuid(cls, idstring):
-        """Find a group by id"""
-        return cls.objects.filter(uuid=idstring).first()
-
-    @classmethod
-    def find_by_ids(cls, idlist):
-        """Find groups with a list of ids"""
-        return cls.objects.filter(uuid__in=idlist).all()
+    def find_all(cls, namelist):
+        """Find groups with a list of names"""
+        return cls.objects.filter(name__in=namelist).all()
 
     def __unicode__(self):
         return unicode(self.name)
 
-    def delete(self, user_uuid=None):
+    def delete(self, username=None):
         # Slow and ugly,
         from indigo.models import Notification
         from indigo.models import User
         state = self.mqtt_get_state()
         for u in User.objects.all():
-            if self.uuid in u.groups:
-                u.groups.remove(self.uuid)
+            if self.name in u.groups:
+                u.groups.remove(self.name)
         super(Group, self).delete()
         payload = self.mqtt_payload(state, {})
-        Notification.delete_group(user_uuid, self.uuid, payload)
+        Notification.delete_group(username, self.name, payload)
 
     def get_users(self):
         """Get users of the group"""
@@ -100,7 +93,7 @@ class Group(Model):
         # objects ID appears in the User group field.
         from indigo.models import User
         return [u for u in User.objects.all()
-                if u.active and self.uuid in u.groups]
+                if u.active and self.name in u.groups]
 
     def get_usernames(self):
         """Get a list of usernames of the group"""
@@ -110,7 +103,7 @@ class Group(Model):
         # objects ID appears in the User group field.
         from indigo.models import User
         return [u.name for u in User.objects.all()
-                if u.active and self.uuid in u.groups]
+                if u.active and self.name in u.groups]
 
     def mqtt_get_state(self):
         """Get the user state for the payload"""
@@ -140,14 +133,14 @@ class Group(Model):
         """Update a group"""
         from indigo.models import Notification
         pre_state = self.mqtt_get_state()
-        if 'user_uuid' in kwargs:
-            user_uuid = kwargs['user_uuid']
-            del kwargs['user_uuid']
+        if 'username' in kwargs:
+            username = kwargs['username']
+            del kwargs['username']
         else:
-            user_uuid = None
+            username = None
         super(Group, self).update(**kwargs)
-        group = Group.find_by_uuid(self.uuid)
+        group = Group.find(self.name)
         post_state = group.mqtt_get_state()
         payload = group.mqtt_payload(pre_state, post_state)
-        Notification.update_group(user_uuid, group.uuid, payload)
+        Notification.update_group(username, group.name, payload)
         return self

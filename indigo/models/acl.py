@@ -26,6 +26,10 @@ from collections import OrderedDict
 from cassandra.cqlengine.usertype import UserType
 from cassandra.cqlengine import columns
 
+from indigo.models import (
+    Group
+)
+
 
 # ACE Flags for ACL in CDMI
 ACEFLAG_NONE = 0x00000000
@@ -169,6 +173,7 @@ ACEFLAG_STR_INT = {
     "NO_FLAGS": 0x00000000
 }
 
+
 def aceflag_to_cdmi_str(num_value):
     """Return the string value for ACE flag value given
 
@@ -222,6 +227,71 @@ def acemask_to_str(acemask, is_object):
     else:
         return ACEMASK_INT_STR_COL.get(acemask, "")
 
+
+def acl_cdmi_to_cql(cdmi_acl):
+    ls_access = []
+    for cdmi_ace in cdmi_acl:
+        if 'identifier' in cdmi_ace:
+            gid = cdmi_ace['identifier']
+        else:
+            # Wrong syntax for the ace
+            continue
+        group = Group.find(gid)
+        if group:
+            ident = group.name
+        elif gid.upper() == "AUTHENTICATED@":
+            ident = "AUTHENTICATED@"
+        elif gid.upper() == "ANONYMOUS@":
+            ident = "ANONYMOUS@"
+        else:
+            # TODO log or return error if the identifier isn't found ?
+            continue
+        s = (u"'{}': {{"
+              "acetype: '{}', "
+              "identifier: '{}', "
+              "aceflags: {}, "
+              "acemask: {}"
+              "}}").format(ident,
+                          cdmi_ace['acetype'].upper(),
+                          ident,
+                          cdmi_str_to_aceflag(cdmi_ace['aceflags']),
+                          cdmi_str_to_acemask(cdmi_ace['acemask'], False)
+                         )
+        ls_access.append(s)
+    acl = u"{{{}}}".format(", ".join(ls_access))
+    return acl
+
+
+def acl_list_to_cql(read_access, write_access):
+    access = {}
+    for gname in read_access:
+        access[gname] = "read"
+    for gname in write_access:
+        if gname in access:
+            access[gname] = "read/write"
+        else:
+            access[gname] = "write"
+    ls_access = []
+    for gname in access:
+        g = Group.find(gname)
+        if g:
+            ident = g.name
+        elif gname.upper() == "AUTHENTICATED@":
+            ident = "AUTHENTICATED@"
+        elif gname.upper() == "ANONYMOUS@":
+            ident = "ANONYMOUS@"
+        else:
+            # TODO log or return error if the identifier isn't found ?
+            continue
+        s = (u"'{}': {{"
+              "acetype: 'ALLOW', "
+              "identifier: '{}', "
+              "aceflags: {}, "
+              "acemask: {}"
+              "}}").format(ident, ident, 0, str_to_acemask(access[gname], False))
+        ls_access.append(s)
+    acl = u"{{{}}}".format(", ".join(ls_access))
+    return acl
 
 def str_to_acemask(lvl, is_object):
     """Return the acemask from a simplified access level"""

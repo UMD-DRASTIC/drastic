@@ -81,7 +81,7 @@ class Resource(object):
 
     @classmethod
     def create(cls, container, name, uuid=None, metadata=None,
-               url=None, mimetype=None, user_uuid=None, size=None):
+               url=None, mimetype=None, username=None, size=None):
         """Create a new resource in the tree_entry table"""
         from indigo.models import Collection
         from indigo.models import Notification
@@ -128,18 +128,26 @@ class Resource(object):
         new = Resource(data_entry)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
-        Notification.create_resource(user_uuid, path, payload)
+        Notification.create_resource(username, path, payload)
         # Index the resource
         new.index()
         return new
 
 
-    def create_acl(self, read_access, write_access):
+    def create_acl_cdmi(self, cdmi_acl):
+        """Add the ACL from a cdmi acl list, ACL are replaced"""
+        if self.is_reference:
+            self.entry.create_entry_acl_cdmi(cdmi_acl)
+        else:
+            self.obj.create_acl_cdmi(cdmi_acl)
+
+
+    def create_acl_list(self, read_access, write_access):
         """Add the ACL from lists of group ids, ACL are replaced"""
         if self.is_reference:
-            self.entry.create_entry_acl(read_access, write_access)
+            self.entry.create_entry_acl_list(read_access, write_access)
         else:
-            self.obj.create_acl(read_access, write_access)
+            self.obj.create_acl_list(read_access, write_access)
 
 
     def delete(self, user_uuid=None):
@@ -371,7 +379,7 @@ class Resource(object):
         return json.dumps(payload, default=datetime_serializer)
 
 
-    def read_acl(self):
+    def get_acl_list(self):
         """Return two list of groups id which have read and write access"""
         read_access = []
         write_access = []
@@ -444,11 +452,22 @@ class Resource(object):
         resc.index()
 
 
-    def update_cdmi_acl(self, cdmi_acl):
+    def update_acl_cdmi(self, cdmi_acl):
         """Update the ACL from a cdmi list of ACE"""
-        if not self.is_reference:
+        if self.is_reference:
+            self.entry.update_entry_acl_cdmi(cdmi_acl)
+        else:
             if self.obj:
-                self.obj.update_cdmi_acl(cdmi_acl)
+                self.obj.update_acl_cdmi(cdmi_acl)
+
+
+    def update_acl_list(self, read_access, write_access):
+        """Update the ACL from a cdmi list of ACE"""
+        if self.is_reference:
+            self.entry.update_entry_acl_cdmi(read_access, write_access)
+        else:
+            if self.obj:
+                self.obj.update_acl_cdmi(read_access, write_access)
 
 
     def user_can(self, user, action):

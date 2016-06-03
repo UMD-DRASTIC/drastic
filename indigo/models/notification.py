@@ -73,13 +73,13 @@ TEMPLATES[OP_CREATE][OBJ_COLLECTION] = """
 TEMPLATES[OP_CREATE][OBJ_USER] = """
 {% load gravatar %}
 {% gravatar user.email 40 %}
-<span class="activity-message">{{ user.name }} created a new user '<a href='{% url "users:view" uuid=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-message">{{ user.name }} created a new user '<a href='{% url "users:view" name=object.name %}'>{{ object.name }}</a>'</span>
 <span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
 """
 TEMPLATES[OP_CREATE][OBJ_GROUP] = """
 {% load gravatar %}
 {% gravatar user.email 40 %}
-<span class="activity-message">{{ user.name }} created a new group '<a href='{% url "groups:view" uuid=object.uuid %}'>{{ object.name }}</a>'</span>
+<span class="activity-message">{{ user.name }} created a new group '<a href='{% url "groups:view" name=object.name %}'>{{ object.name }}</a>'</span>
 <span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
 """
 
@@ -123,13 +123,13 @@ TEMPLATES[OP_UPDATE][OBJ_COLLECTION] = """
 TEMPLATES[OP_UPDATE][OBJ_USER] = """
 {% load gravatar %}
 {% gravatar user.email 40 %}
-<span class="activity-message">{{ user.name }} edited user '<a href='{% url "users:view" uuid=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-message">{{ user.name }} edited user '<a href='{% url "users:view" name=object.name %}'>{{ object.name }}</a>'</span>
 <span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
 """
 TEMPLATES[OP_UPDATE][OBJ_GROUP] = """
 {% load gravatar %}
 {% gravatar user.email 40 %}
-<span class="activity-message">{{ user.name }} edited group '<a href='{% url "groups:view" uuid=object.uuid %}'>{{ object.name }}</a>'</span>
+<span class="activity-message">{{ user.name }} edited group '<a href='{% url "groups:view" name=object.name %}'>{{ object.name }}</a>'</span>
 <span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
 """
 
@@ -166,7 +166,7 @@ class Notification(Model):
     object_uuid = columns.Text(primary_key=True)
     
     # The user who initiates the operation
-    user_uuid = columns.Text()
+    username = columns.Text()
     # True if the corresponding worklow has been executed correctly (for Move
     # or indexing for instance)
     # True if nothing has to be done
@@ -180,12 +180,12 @@ class Notification(Model):
 
 
     @classmethod
-    def create_collection(cls, user_uuid, path, payload):
+    def create_collection(cls, username, path, payload):
         """Create a new collection and publish the message on MQTT"""
         new = cls.new(operation=OP_CREATE,
                       object_type=OBJ_COLLECTION,
                       object_uuid=path,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_CREATE, OBJ_COLLECTION, path, payload)
@@ -193,12 +193,12 @@ class Notification(Model):
 
 
     @classmethod
-    def create_group(cls, user_uuid, uuid, payload):
+    def create_group(cls, username, uuid, payload):
         """Create a new group and publish the message on MQTT"""
         new = cls.new(operation=OP_CREATE,
                       object_type=OBJ_GROUP,
                       object_uuid=uuid,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_CREATE, OBJ_GROUP, uuid, payload)
@@ -206,12 +206,12 @@ class Notification(Model):
 
 
     @classmethod
-    def create_resource(cls, user_uuid, path, payload):
+    def create_resource(cls, username, path, payload):
         """Create a new resource and publish the message on MQTT"""
         new = cls.new(operation=OP_CREATE,
                       object_type=OBJ_RESOURCE,
                       object_uuid=path,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_CREATE, OBJ_RESOURCE, path, payload)
@@ -219,12 +219,12 @@ class Notification(Model):
 
 
     @classmethod
-    def create_user(cls, user_uuid, uuid, payload):
+    def create_user(cls, username, uuid, payload):
         """Create a new user and publish the message on MQTT"""
         new = cls.new(operation=OP_CREATE,
                       object_type=OBJ_USER,
                       object_uuid=uuid,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_CREATE, OBJ_USER, uuid, payload)
@@ -232,12 +232,12 @@ class Notification(Model):
 
 
     @classmethod
-    def delete_collection(cls, user_uuid, path, payload):
+    def delete_collection(cls, username, path, payload):
         """Delete a collection and publish the message on MQTT"""
         new = cls.new(operation=OP_DELETE,
                       object_type=OBJ_COLLECTION,
                       object_uuid=path,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_DELETE, OBJ_COLLECTION, path, payload)
@@ -245,12 +245,12 @@ class Notification(Model):
 
 
     @classmethod
-    def delete_group(cls, user_uuid, uuid, payload):
+    def delete_group(cls, username, uuid, payload):
         """Delete a group and publish the message on MQTT"""
         new = cls.new(operation=OP_DELETE,
                       object_type=OBJ_GROUP,
                       object_uuid=uuid,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_DELETE, OBJ_GROUP, uuid, payload)
@@ -258,12 +258,12 @@ class Notification(Model):
 
 
     @classmethod
-    def delete_resource(cls, user_uuid, path, payload):
+    def delete_resource(cls, username, path, payload):
         """Delete a resource and publish the message on MQTT"""
         new = cls.new(operation=OP_DELETE,
                       object_type=OBJ_RESOURCE,
                       object_uuid=path,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_DELETE, OBJ_RESOURCE, path, payload)
@@ -271,12 +271,12 @@ class Notification(Model):
 
 
     @classmethod
-    def delete_user(cls, user_uuid, uuid, payload):
+    def delete_user(cls, username, uuid, payload):
         """Delete a user and publish the message on MQTT"""
         new = cls.new(operation=OP_DELETE,
                       object_type=OBJ_USER,
                       object_uuid=uuid,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_DELETE, OBJ_USER, uuid, payload)
@@ -344,7 +344,7 @@ class Notification(Model):
             'operation': self.operation,
             'object_type': self.object_type,
             'object_uuid': self.object_uuid,
-            'user_uuid': self.user_uuid,
+            'username': self.username,
             'tmpl': self.tmpl(),
             'payload': json.loads(self.payload)
         }
@@ -352,12 +352,12 @@ class Notification(Model):
 
 
     @classmethod
-    def update_collection(cls, user_uuid, path, payload):
+    def update_collection(cls, username, path, payload):
         """Update a collection and publish the message on MQTT"""
         new = cls.new(operation=OP_UPDATE,
                       object_type=OBJ_COLLECTION,
                       object_uuid=path,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_UPDATE, OBJ_COLLECTION, path, payload)
@@ -365,12 +365,12 @@ class Notification(Model):
 
 
     @classmethod
-    def update_group(cls, user_uuid, uuid, payload):
+    def update_group(cls, username, uuid, payload):
         """Update a group and publish the message on MQTT"""
         new = cls.new(operation=OP_UPDATE,
                       object_type=OBJ_GROUP,
                       object_uuid=uuid,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_UPDATE, OBJ_GROUP, uuid, payload)
@@ -378,12 +378,12 @@ class Notification(Model):
 
 
     @classmethod
-    def update_resource(cls, user_uuid, path, payload):
+    def update_resource(cls, username, path, payload):
         """Update a resource and publish the message on MQTT"""
         new = cls.new(operation=OP_UPDATE,
                       object_type=OBJ_RESOURCE,
                       object_uuid=path,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_UPDATE, OBJ_RESOURCE, path, payload)
@@ -391,12 +391,12 @@ class Notification(Model):
 
 
     @classmethod
-    def update_user(cls, user_uuid, uuid, payload):
+    def update_user(cls, username, uuid, payload):
         """Update a user and publish the message on MQTT"""
         new = cls.new(operation=OP_UPDATE,
                       object_type=OBJ_USER,
                       object_uuid=uuid,
-                      user_uuid=user_uuid,
+                      username=username,
                       processed=True,
                       payload=payload)
         cls.mqtt_publish(new, OP_UPDATE, OBJ_USER, uuid, payload)

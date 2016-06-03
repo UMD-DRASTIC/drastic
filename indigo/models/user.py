@@ -32,9 +32,9 @@ from indigo.util import (
 
 class User(Model):
     """User Model"""
-    uuid = columns.Text(primary_key=True, default=default_uuid)
+    uuid = columns.Text(default=default_uuid)
 #     username = columns.Text(required=True)
-    name = columns.Text(required=True, index=True)
+    name = columns.Text(primary_key=True, required=True)
     email = columns.Text(required=True)
     password = columns.Text(required=True)
     administrator = columns.Boolean(required=True, default=False)
@@ -56,11 +56,11 @@ class User(Model):
             kwargs.pop('hard')
         else:
             rounds = 1
-        if 'user_uuid' in kwargs:
-            user_uuid = kwargs['user_uuid']
-            del kwargs['user_uuid']
+        if 'username' in kwargs:
+            username = kwargs['username']
+            del kwargs['username']
         else:
-            user_uuid = None
+            username = None
 
         kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                    rounds=rounds,
@@ -75,32 +75,24 @@ class User(Model):
         user.save()
         state = user.mqtt_get_state()
         payload = user.mqtt_payload({}, state)
-        # user_uuid is the id of the user who did the operation
+        # username is the id of the user who did the operation
         # user.uuid is the id of the new user
-        Notification.create_user(user_uuid, user.uuid, payload)
+        Notification.create_user(username, user.uuid, payload)
         return user
 
-    def delete(self, user_uuid=None):
+    def delete(self, username=None):
         from indigo.models import Notification
         state = self.mqtt_get_state()
         super(User, self).delete()
         payload = self.mqtt_payload(state, {})
-        # user_uuid is the id of the user who did the operation
+        # username is the id of the user who did the operation
         # user.uuid is the id of the new user
-        Notification.delete_user(user_uuid, self.uuid, payload)
+        Notification.delete_user(username, self.uuid, payload)
 
     @classmethod
     def find(cls, name):
         """Find a user from his name"""
         return cls.objects.filter(name=name).first()
-
-    @classmethod
-    def find_by_uuid(cls, idstring):
-        """Find a user from his id"""
-        if idstring:
-            return cls.objects.filter(uuid=idstring).first()
-        else:
-            return None
 
     def __unicode__(self):
         return unicode(self.name)
@@ -128,7 +120,7 @@ class User(Model):
         payload['name'] = self.name
         payload['email'] = self.email
         payload['active'] = self.active
-        payload['groups'] = [g.uuid for g in Group.find_by_ids(self.groups)]
+        payload['groups'] = [g.name for g in Group.find_all(self.groups)]
         return payload
 
 
@@ -153,7 +145,7 @@ class User(Model):
             'email': self.email,
             'administrator': self.administrator,
             'active': self.active,
-            'groups': [g.to_dict() for g in Group.find_by_ids(self.groups)]
+            'groups': [g.to_dict() for g in Group.find_all(self.groups)]
         }
 
     def update(self, **kwargs):
@@ -172,14 +164,14 @@ class User(Model):
             kwargs['password'] = pbkdf2_sha256.encrypt(kwargs['password'],
                                                        rounds=rounds,
                                                        salt_size=size)
-        if 'user_uuid' in kwargs:
-            user_uuid = kwargs['user_uuid']
-            del kwargs['user_uuid']
+        if 'username' in kwargs:
+            username = kwargs['username']
+            del kwargs['username']
         else:
-            user_uuid = None
+            username = None
         super(User, self).update(**kwargs)
-        user = User.find_by_uuid(self.uuid)
+        user = User.find(self.name)
         post_state = user.mqtt_get_state()
         payload = user.mqtt_payload(pre_state, post_state)
-        Notification.update_user(user_uuid, user.uuid, payload)
+        Notification.update_user(username, user.uuid, payload)
         return self

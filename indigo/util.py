@@ -326,6 +326,7 @@ def merge(coll_name, resc_name):
 def meta_cassandra_to_cdmi(metadata):
     """Transform a metadata dictionary retrieved from Cassandra to a CDMI
     metadata dictionary
+    metadata are stored as json strings, they need to be parsed
     :param metadata: """
     md = {}
     for k, v in metadata.items():

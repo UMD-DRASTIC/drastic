@@ -31,6 +31,8 @@ from indigo.models import (
 )
 from indigo.models.acl import (
     Ace,
+    acl_cdmi_to_cql,
+    acl_list_to_cql,
     cdmi_str_to_aceflag,
     str_to_acemask,
     cdmi_str_to_acemask,
@@ -140,9 +142,27 @@ class DataObject(Model):
         return new
 
 
-    def create_acl(self, read_access, write_access):
+    def create_acl(self, acl_cql):
+        """Replace the static acl with the given cql string"""
+        cfg = get_config(None)
+        session = connection.get_session()
+        keyspace = cfg.get('KEYSPACE', 'indigo')
+        session.set_keyspace(keyspace)
+        query = SimpleStatement(u"""UPDATE data_object SET acl = {}
+            WHERE uuid=%s""".format(acl_cql))
+        session.execute(query, (self.uuid,))
+
+
+    def create_acl_cdmi(self, cdmi_acl):
+        """""Create entry ACL from a cdmi object (list of dict)"""
+        cql_string = acl_cdmi_to_cql(cdmi_acl)
+        self.create_acl(cql_string)
+
+
+    def create_acl_list(self, read_access, write_access):
         """Create ACL from two lists of groups id, existing ACL are replaced"""
-        self.update_acl(read_access, write_access)
+        cql_string = acl_list_to_cql(read_access, write_access)
+        self.create_acl(cql_string)
 
 
     @classmethod
@@ -172,13 +192,6 @@ class DataObject(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'indigo')
         session.set_keyspace(keyspace)
-
-#         if "mimetype" in kwargs:
-#             metadata = kwargs.get('metadata', {})
-#             metadata["cdmi_mimetype"] = kwargs["mimetype"]
-#             kwargs['metadata'] = meta_cdmi_to_cassandra(metadata)
-#             del kwargs['mimetype']
-
         for arg in kwargs:
             # For static fields we can't use the name in the where condition
             if arg in static_fields:
@@ -192,91 +205,26 @@ class DataObject(Model):
         return self
 
 
-    def update_acl(self, read_access, write_access):
-        """Replace the acl with the given list of access.
-
-        read_access: a list of groups id that have read access for this
-                     collection
-        write_access: a list of groups id that have write access for this
-                     collection
-
+    def update_acl(self, acl_cql):
+        """Update the static acl with the given cql string
         """
-        cfg = get_config(None)
-        keyspace = cfg.get('KEYSPACE', 'indigo')
-        # The ACL we construct will replace the existing one
-        # The dictionary keys are the groups id for which we have an ACE
-        # We don't use aceflags yet, everything will be inherited by lower
-        # sub-collections
-        # acemask is set with helper (read/write - see indigo/models/acl/py)
-        access = {}
-        for gid in read_access:
-            access[gid] = "read"
-        for gid in write_access:
-            if gid in access:
-                access[gid] = "read/write"
-            else:
-                access[gid] = "write"
-        ls_access = []
-        for gid in access:
-            group = Group.find_by_uuid(gid)
-            if group:
-                ident = group.name
-            elif gid.upper() == "AUTHENTICATED@":
-                ident = "AUTHENTICATED@"
-            else:
-                # TODO log or return error if the identifier isn't found ?
-                continue
-            s = ("'{}': {{"
-                 "acetype: 'ALLOW', "
-                 "identifier: '{}', "
-                 "aceflags: {}, "
-                 "acemask: {}"
-                 "}}").format(gid, ident, 0, str_to_acemask(access[gid], True))
-            ls_access.append(s)
-        acl = "{{{}}}".format(", ".join(ls_access))
-        query = ("UPDATE {}.data_object SET acl = acl + {}"
-                 "WHERE uuid='{}'").format(
-            keyspace,
-            acl,
-            self.uuid)
-        connection.execute(query)
-
-
-    def update_cdmi_acl(self, cdmi_acl):
-        """Update acl with the metadata acl passed with a CDMI request"""
         cfg = get_config(None)
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'indigo')
         session.set_keyspace(keyspace)
-        ls_access = []
-        for cdmi_ace in cdmi_acl:
-            if 'identifier' in cdmi_ace:
-                gid = cdmi_ace['identifier']
-            else:
-                # Wrong syntax for the ace
-                continue
-            group = Group.find(gid)
-            if group:
-                ident = group.name
-            elif gid.upper() == "AUTHENTICATED@":
-                ident = "AUTHENTICATED@"
-            else:
-                # TODO log or return error if the identifier isn't found ?
-                continue
-            s = ("'{}': {{"
-                 "acetype: '{}', "
-                 "identifier: '{}', "
-                 "aceflags: {}, "
-                 "acemask: {}"
-                 "}}").format(group.uuid,
-                              cdmi_ace['acetype'].upper(),
-                              ident,
-                              cdmi_str_to_aceflag(cdmi_ace['aceflags']),
-                              cdmi_str_to_acemask(cdmi_ace['acemask'], False)
-                             )
-            ls_access.append(s)
-        acl = "{{{}}}".format(", ".join(ls_access))
-        query = """UPDATE data_object SET acl={}
-            WHERE uuid='{}'""".format(acl, self.uuid)
-        session.execute(query)
+        query = SimpleStatement(u"""UPDATE data_object SET acl = acl + {}
+            WHERE uuid=%s""".format(acl_cql))
+        session.execute(query, (self.uuid,))
+
+
+    def update_acl_cdmi(self, cdmi_acl):
+        """"Update entry ACL from a cdmi object (list of dict)"""
+        cql_string = acl_cdmi_to_cql(cdmi_acl)
+        self.update_acl(cql_string)
+
+
+    def update_acl_list(self, read_access, write_access):
+        """Update ACL from two lists of groups id, existing ACL are replaced"""
+        cql_string = acl_list_to_cql(read_access, write_access)
+        self.update_acl(cql_string)
 

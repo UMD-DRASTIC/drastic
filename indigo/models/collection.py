@@ -65,7 +65,7 @@ class Collection(object):
 
 
     @classmethod
-    def create(cls, name, container='/', metadata=None, user_uuid=None):
+    def create(cls, name, container='/', metadata=None, username=None):
         """Create a new collection"""
         from indigo.models import Notification
         from indigo.models import Resource
@@ -102,16 +102,22 @@ class Collection(object):
         new = Collection.find(path)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
-        Notification.create_collection(user_uuid, path, payload)
+        Notification.create_collection(username, path, payload)
         # Index the collection
         new.index()
         return new
 
 
-    def create_acl(self, read_access, write_access):
+    def create_acl_list(self, read_access, write_access):
         """Create ACL in the tree entry table from two lists of groups id,
         existing ACL are replaced"""
-        self.entry.create_acl(read_access, write_access)
+        self.entry.create_container_acl_list(read_access, write_access)
+
+
+    def create_acl_cdmi(self, cdmi_acl):
+        """Create ACL in the tree entry table from ACL in the cdmi format (list
+        of ACE dictionary), existing ACL are replaced"""
+        self.entry.create_container_acl_cdmi(cdmi_acl)
 
 
     @classmethod
@@ -127,7 +133,7 @@ class Collection(object):
         return root_entry
 
 
-    def delete(self, user_uuid=None):
+    def delete(self, username=None):
         """Delete a collection and the associated row in the tree entry table"""
         from indigo.models import Notification
         if self.is_root:
@@ -145,12 +151,12 @@ class Collection(object):
             child.delete()
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
-        Notification.delete_collection(user_uuid, self.path, payload)
+        Notification.delete_collection(username, self.path, payload)
         self.reset()
 
 
     @classmethod
-    def delete_all(cls, path, user_uuid=None):
+    def delete_all(cls, path, username=None):
         """Delete recursively all sub-collections and all resources contained
         in a collection at 'path'"""
         from indigo.models import Resource
@@ -161,10 +167,10 @@ class Collection(object):
         collections = [Collection.find(merge(path, c)) for c in collections]
         resources = [Resource.find(merge(path, c)) for c in resources]
         for resource in resources:
-            resource.delete(user_uuid)
+            resource.delete(username)
         for collection in collections:
-            Collection.delete_all(collection.path, user_uuid)
-        parent.delete(user_uuid)
+            Collection.delete_all(collection.path, username)
+        parent.delete(username)
 
 
     @classmethod
@@ -181,6 +187,25 @@ class Collection(object):
     def get_acl(self):
         """Return a dictionary of acl based on the Collection schema"""
         return self.entry.container_acl
+
+
+    def get_acl_list(self):
+        """Return two list of groups id which have read and write access"""
+        read_access = []
+        write_access = []
+        for gid, ace in self.entry.container_acl.items():
+            oper = acemask_to_str(ace.acemask, False)
+            if oper == "read":
+                read_access.append(gid)
+            elif oper == "write":
+                write_access.append(gid)
+            elif oper == "read/write":
+                read_access.append(gid)
+                write_access.append(gid)
+            else:
+                # Unknown combination
+                pass
+        return read_access, write_access
 
 
     def get_acl_metadata(self):
@@ -270,25 +295,6 @@ class Collection(object):
         payload['post'] = post_state
         return json.dumps(payload, default=datetime_serializer)
 
-
-    def read_acl(self):
-        """Return two list of groups id which have read and write access"""
-        read_access = []
-        write_access = []
-        for gid, ace in self.entry.container_acl.items():
-            oper = acemask_to_str(ace.acemask, False)
-            if oper == "read":
-                read_access.append(gid)
-            elif oper == "write":
-                write_access.append(gid)
-            elif oper == "read/write":
-                read_access.append(gid)
-                write_access.append(gid)
-            else:
-                # Unknown combination
-                pass
-        return read_access, write_access
-
     def reset(self):
         from indigo.models import SearchIndex
         SearchIndex.reset(self.path)
@@ -322,29 +328,29 @@ class Collection(object):
             metadata = meta_cdmi_to_cassandra(kwargs['metadata'])
             kwargs['container_metadata'] = metadata
             del kwargs['metadata']
-        if 'user_uuid' in kwargs:
-            user_uuid = kwargs['user_uuid']
-            del kwargs['user_uuid']
+        if 'username' in kwargs:
+            username = kwargs['username']
+            del kwargs['username']
         else:
-            user_uuid = None
+            username = None
         self.entry.update(**kwargs)
         coll = Collection.find(self.path)
         post_state = coll.mqtt_get_state()
         payload = coll.mqtt_payload(pre_state, post_state)
-        Notification.update_collection(user_uuid, coll.path, payload)
+        Notification.update_collection(username, coll.path, payload)
         coll.index()
 
 
-    def update_acl(self, read_access, write_access):
+    def update_acl_list(self, read_access, write_access):
         """Update ACL in the tree entry table from two lists of groups id,
         existing ACL are replaced"""
-        self.entry.update_acl(read_access, write_access)
+        self.entry.update_container_acl_list(read_access, write_access)
 
 
-    def update_cdmi_acl(self, cdmi_acl):
+    def update_acl_cdmi(self, cdmi_acl):
         """Update ACL in the tree entry table from ACL in the cdmi format (list
         of ACE dictionary), existing ACL are replaced"""
-        self.entry.update_cdmi_acl(cdmi_acl)
+        self.entry.update_container_acl_cdmi(cdmi_acl)
 
 
     def user_can(self, user, action):
