@@ -41,6 +41,15 @@ class User(Model):
     active = columns.Boolean(required=True, default=True)
     groups = columns.List(columns.Text, index=True)
 
+    def add_group(self, groupname):
+        self.add_groups([groupname])
+
+    def add_groups(self, ls_group):
+        new_groups = self.get_groups() + ls_group
+        # remove duplicate
+        new_groups = list(set(new_groups))
+        self.update(groups=new_groups)
+
     @classmethod
     @log_with()
     def create(cls, **kwargs):
@@ -105,6 +114,10 @@ class User(Model):
         """Return user full name"""
         return self.name
 
+    def get_groups(self):
+        """Return user list of group names"""
+        return self.groups
+
     def is_active(self):
         """Check if the user is active"""
         return self.active
@@ -130,6 +143,15 @@ class User(Model):
         payload['pre'] = pre_state
         payload['post'] = post_state
         return json.dumps(payload, default=datetime_serializer)
+
+    def rm_group(self, groupname):
+        self.rm_groups([groupname])
+
+    def rm_groups(self, ls_group):
+        new_groups = set(self.get_groups()) - set(ls_group)
+        # remove duplicate
+        new_groups = list(set(new_groups))
+        self.update(groups=new_groups)
 
     def save(self, **kwargs):
         """Save modifications in Cassandra"""

@@ -39,6 +39,31 @@ class Group(Model):
     name = columns.Text(primary_key=True, required=True)
 #     owner = columns.Text(required=True)
 
+    def add_user(self, username):
+        return self.add_users([username])
+
+    def add_users(self, ls_users):
+        """Add a list of users to a group
+        Return 3 lists:
+          - added for the username which were added
+          - already_there for username already in the group
+          - not_added for username not found"""
+        from indigo.models import User
+        added = []
+        not_added = []
+        already_there = []
+        for username in ls_users:
+            user = User.find(username)
+            if user:
+                if self.name not in user.get_groups():
+                    user.add_group(self.name)
+                    added.append(username)
+                else:
+                    already_there.append(username)
+            else:
+                not_added.append(username)
+        return added, not_added, already_there
+
     @classmethod
     def create(cls, **kwargs):
         """Create a new group, raise an exception if the group already
@@ -121,6 +146,31 @@ class Group(Model):
         payload['pre'] = pre_state
         payload['post'] = post_state
         return json.dumps(payload, default=datetime_serializer)
+
+    def rm_user(self, username):
+        return self.rm_users([username])
+
+    def rm_users(self, ls_users):
+        """Remove a list of users from the group
+        Return 3 lists:
+            removed for the username who were removed
+            not_there for the username who weren't in the gr
+            not_exist for the usernames who doesn't exist"""
+        from indigo.models import User
+        not_exist = []
+        removed = []
+        not_there = []
+        for username in ls_users:
+            user = User.find(username)
+            if user:
+                if self.name in user.get_groups():
+                    user.rm_group(self.name)
+                    removed.append(username)
+                else:
+                    not_there.append(username)
+            else:
+                not_exist.append(username)
+        return removed, not_there, not_exist
 
     def to_dict(self):
         """Return a dictionary that represents the group"""
