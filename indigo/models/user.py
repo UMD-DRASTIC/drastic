@@ -173,5 +173,5 @@ class User(Model):
         user = User.find(self.name)
         post_state = user.mqtt_get_state()
         payload = user.mqtt_payload(pre_state, post_state)
-        Notification.update_user(username, user.uuid, payload)
+        Notification.update_user(username, user.name, payload)
         return self
