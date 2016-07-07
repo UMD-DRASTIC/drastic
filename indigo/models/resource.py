@@ -150,7 +150,7 @@ class Resource(object):
             self.obj.create_acl_list(read_access, write_access)
 
 
-    def delete(self, user_uuid=None):
+    def delete(self, username=None):
         """Delete the resource in the tree_entry table and all the corresponding
         blobs"""
         from indigo.models import Notification
@@ -158,7 +158,7 @@ class Resource(object):
         self.entry.delete()
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
-        Notification.delete_resource(user_uuid, self.path, payload)
+        Notification.delete_resource(username, self.path, payload)
         self.reset()
 
 
@@ -430,24 +430,33 @@ class Resource(object):
         """Update a resource"""
         from indigo.models import Notification
         pre_state = self.mqtt_get_state()
+        kwargs['modified_ts'] = datetime.now()
+        print kwargs
+        
+        # user_uuid used for Notification
         if 'user_uuid' in kwargs:
             user_uuid = kwargs['user_uuid']
             del kwargs['user_uuid']
         else:
             user_uuid = None
+
+        # Metadata given in cdmi format are transformed to be stored in Cassandra
         if 'metadata' in kwargs:
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
+
         if self.is_reference:
             self.entry.update(**kwargs)
         else:
-            kwargs2 = {'modified_ts' : datetime.now()}
-            if 'metadata' in kwargs:
-                kwargs2['metadata'] = kwargs['metadata']
-                self.obj.update(**kwargs2)
+            if 'url' in kwargs:
+                self.entry.update(url=kwargs['url'])
+                del kwargs['url']
+            self.obj.update(**kwargs)
+
         resc = Resource.find(self.path)
         post_state = resc.mqtt_get_state()
         payload = resc.mqtt_payload(pre_state, post_state)
         Notification.update_resource(user_uuid, resc.path, payload)
+
         # Index the resource
         resc.index()
 
