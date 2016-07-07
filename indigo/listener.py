@@ -45,9 +45,13 @@ import paho.mqtt.client as mqtt
 import magic
 
 from indigo import get_config
-from indigo import drivers
 import log
-from models import initialise, Collection
+from models import (
+    initialise,
+    Collection,
+    ListenerLog,
+    Resource,
+)
 from util import meta_cassandra_to_cdmi
 
 scripts = dict()
@@ -102,13 +106,14 @@ def on_message(client, userdata, msg):
             del scripts[script]
             os.unlink(os.path.join(script_path, script_file_name))
             return
-
+        
         # TODO: Refactor this and combine it with the scan_script_collection() function.
-        driver = drivers.get_driver(payload['post']['url'])
-
+        resource = Resource.find("{}/{}".format(payload['post']['container'],
+                                                payload['post']['name']))
+        
         script_contents = StringIO.StringIO()
 
-        for chunk in driver.chunk_content():
+        for chunk in resource.chunk_content():
             script_contents.write(chunk)
 
         script_type = magic.from_buffer(script_contents.getvalue())
@@ -169,35 +174,44 @@ def execute_script(script, topic, payload):
     logger.debug('{0} {1} {2} {3}'.format(docker_cmd, filename, topic, payload))
     params = docker_cmd.split()
     params.extend((filename, topic, payload))
-    proc = subprocess.Popen(params, shell=False, stdin=subprocess.PIPE, stdout=DEVNULL, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(params,
+                            shell=False,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
     gevent.spawn_later(MAX_PROC_TIME, kill_container, proc.pid)
     proc.stdin.write(payload)
+    
+    stdout, stderr = proc.communicate()
+    log = ListenerLog.create(script_name="/scripts/{}".format(filename),
+                             stdout=stdout,
+                             stderr=stderr)
     proc.stdin.close()
 
 
 def scan_script_collection(directory):
     logging.info('Scanning "{0}" for scripts'.format(directory))
-    collection = Collection.find_by_path(directory)
+    collection = Collection.find(directory)
 
     if collection is None:
         logging.warning('There are no scripts to scan because I am unable '
                         'to find the collection "{0}" in the database.'.format(directory))
         return
 
-    resource_count = collection.get_child_resource_count()
+    child_container, child_dataobject = collection.get_child()
+    resource_count = len(child_dataobject)
     logging.info('{0} scripts found in collection "{1}"'.format(resource_count, directory))
 
     # TODO: Refactor this and combine it with the on_message() function.
-    for resource in collection.get_child_resources():
-        url = resource.url
-        driver = drivers.get_driver(url)
-
+    
+    for resource_name in child_dataobject:
+        resource = Resource.find("{}/{}".format(directory, resource_name))
         script_contents = StringIO.StringIO()
 
-        for chunk in driver.chunk_content():
+        for chunk in resource.chunk_content():
             script_contents.write(chunk)
 
-        trigger_topic = meta_cassandra_to_cdmi(resource.metadata)['topic']
+        trigger_topic = resource.get_cdmi_metadata().get('topic', '')
         script = resource.name
         script_type = magic.from_buffer(script_contents.getvalue())
         script_full_path = os.path.join(script_directory, script)
