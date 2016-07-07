@@ -126,7 +126,7 @@ class DataObject(Model):
 
 
     @classmethod
-    def create(cls, data, compressed=False):
+    def create(cls, data, compressed=False, metadata=None, create_ts=None, acl=None):
         """data: initial data"""
         new_id = default_cdmi_id()
         now = datetime.now()
@@ -135,9 +135,16 @@ class DataObject(Model):
             "sequence_number": 0,
             "blob": data,
             "compressed": compressed,
-            "create_ts": now,
             "modified_ts": now
         }
+        if metadata:
+            kwargs['metadata'] = metadata
+        if create_ts:
+            kwargs['create_ts'] = create_ts
+        else:
+            kwargs['create_ts'] = now
+        if acl:
+            kwargs['acl'] = acl
         new = super(DataObject, cls).create(**kwargs)
         return new
 
