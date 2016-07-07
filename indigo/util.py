@@ -23,9 +23,13 @@ import struct
 import base64
 import os.path
 import json
-from datetime import datetime
+from datetime import (
+    datetime,
+    timedelta
+)
 from time import time as timestamp
 import logging
+from cassandra.util import uuid_from_time
 
 from indigo.log import init_log
 
@@ -304,9 +308,27 @@ def default_cdmi_id():
     return base64.b16encode(id_)
 
 
+def default_date():
+    """Return a string representing current local the date"""
+    return datetime.now().strftime("%y%m%d")
+
+
+def default_time():
+    """Generate a TimeUUID from the current local date and time"""
+    return uuid_from_time(datetime.now())
+
+
+
 def default_uuid():
     """Return a new UUID"""
     return unicode(uuid.uuid4())
+
+
+def last_x_days(days=5):
+    """Return the last X days as string names YYMMDD in a list"""
+    dt = datetime.now()
+    dates = [dt + timedelta(days=-x) for x in xrange(1, days)] + [dt]
+    return [d.strftime("%y%m%d") for d in dates]
 
 
 def merge(coll_name, resc_name):
@@ -397,5 +419,7 @@ def split(path):
     coll_name = os.path.dirname(path)
     resc_name = os.path.basename(path)
     return tuple((coll_name, resc_name))
+
+
 
 

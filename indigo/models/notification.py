@@ -16,10 +16,6 @@ limitations under the License.
 """
 
 
-from datetime import (
-    datetime,
-    timedelta
-)
 import json
 import paho.mqtt.publish as publish
 import logging
@@ -29,12 +25,13 @@ from cassandra.cqlengine.models import (
     Model
     )
 from cassandra.query import SimpleStatement
-from cassandra.util import uuid_from_time
-
 from indigo import get_config
 from indigo.util import (
-    datetime_serializer,
+    default_time,
+    default_date,
+    last_x_days
 )
+
 
 # Operations that could lead to a new notification
 OP_CREATE = "create"
@@ -133,22 +130,6 @@ TEMPLATES[OP_UPDATE][OBJ_GROUP] = """
 <span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
 """
 
-
-def default_time():
-    """Generate a TimeUUID from the current local date and time"""
-    return uuid_from_time(datetime.now())
-
-
-def default_date():
-    """Return a string representing current local the date"""
-    return datetime.now().strftime("%y%m%d")
-
-
-def last_x_days(days=5):
-    """Return the last X days as string names YYMMDD in a list"""
-    dt = datetime.now()
-    dates = [dt + timedelta(days=-x) for x in xrange(1, days)] + [dt]
-    return [d.strftime("%y%m%d") for d in dates]
 
 
 class Notification(Model):
