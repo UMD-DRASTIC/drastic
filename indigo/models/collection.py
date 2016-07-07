@@ -256,6 +256,10 @@ class Collection(object):
                 child_dataobject.append(entry.name)
         return (child_container, child_dataobject)
 
+    def get_child_resource_count(self):
+        child_container, child_dataobject = self.get_child()
+        return len(child_dataobject)
+
 
     def get_cdmi_metadata(self):
         """Return a dictionary of metadata"""
