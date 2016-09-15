@@ -1,9 +1,9 @@
-Archive Analytics Indigo Listener
+Drastic Listener
 =================================
 
 Synopsis
 --------
-The listener is a daemon that executes user-created Python scripts when events trigger on the Indigo ORM.
+The listener is a daemon that executes user-created Python scripts when events trigger on the Drastic ORM.
 
 Overview of operation
 ---------------------
@@ -18,7 +18,7 @@ the operation executes the script. So for any one operation, a given script will
 ### Messages
 Because the application that interacts with the ORM is running as a different process (or possibly on a different
 machine), normal intra-process communication will not work, so some form of inter-process or network communication is
-needed. Indigo uses MQTT for this communication, which is an example of a publish/subscribe model. MQTT has a central
+needed. Drastic uses MQTT for this communication, which is an example of a publish/subscribe model. MQTT has a central
 "broker" that receives all messages and forwards them on to clients who have subscribed to a topic or topics. In the
 case of MQTT, topics are a text string in the form of a UNIX-style path or URI, which defines a hierarchy. E.g.:
 
@@ -42,7 +42,7 @@ Matches any operation on that particular *resource*.
 
 Matches a *create* operation on any *resource* or *collection* below `/somepath`
 
-User-defined scripts can currently subscribe to one topic (including wildcards). This is defined in Indigo by giving it
+User-defined scripts can currently subscribe to one topic (including wildcards). This is defined in Drastic by giving it
 the metadata key "topic" and the matching topic string as its value. If this metadata isn't present, the listener
 ignores the script. Note, scripts cannot trigger off changes to the `/scripts` collection.
 

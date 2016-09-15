@@ -1,19 +1,19 @@
-# Indigo
+# Drastic
 
-This is a shared library for sharing functionality between various components in a running Indigo system.  It is intended to be included by the [indigo-web](https://bitbucket.org/archivea/indigo-web) and [indigo-agent](https://bitbucket.org/archivea/indigo-agent) components.
+This is a shared library for sharing functionality between various components in a running Drastic system.  It is intended to be included by the [drastic-web](https://bitbucket.org/archivea/drastic-web) and [drastic-agent](https://bitbucket.org/archivea/drastic-agent) components.
 
 ## Configuration
 
-Configuration is specified with the INDIGO_CONFIG environment variable
+Configuration is specified with the DRASTIC_CONFIG environment variable
 
 ```
-export INDIGO_CONFIG=settings
+export DRASTIC_CONFIG=settings
 ```
 
-The file at settings.py only needs to be changed should the Cassandra Keyspace name change.  By default the keyspace is called Indigo.
+The file at settings.py only needs to be changed should the Cassandra Keyspace name change.  By default the keyspace is called Drastic.
 
 
-## Functionality provided 
+## Functionality provided
 
 ### Models
 
@@ -28,74 +28,74 @@ The file at settings.py only needs to be changed should the Cassandra Keyspace n
 
 #### Errors
 
-This module contains Indigo model-specific exceptions to be handled if problems
+This module contains Drastic model-specific exceptions to be handled if problems
 occur when writing to the database, such as UniqueError to be raised when an
 attempt is made to write a new Collection with the name of an existing one.
 
 
-### Drivers 
+### Drivers
 
-The shared drivers (```indigo.drivers.CassandraDriver``` and ```indigo.drivers.FileSystemDriver```) provide functions for returning a previous added file in chunks.  The drivers are loaded by called ```indigo.drivers.get_driver()``` and passing either a cassandra:// URL or a file:// URL. By default the chunk size is 1Mb.
+The shared drivers (```drastic.drivers.CassandraDriver``` and ```drastic.drivers.FileSystemDriver```) provide functions for returning a previous added file in chunks.  The drivers are loaded by called ```drastic.drivers.get_driver()``` and passing either a cassandra:// URL or a file:// URL. By default the chunk size is 1Mb.
 
 
 ### Metadata Validation
 
-The ```indigo.metadata.MetadataValidator``` class provides a mechanism for validating collection/resource metadata when submitted via a webform.  Once the CDMI layer is complete it is expected that it will use the same mechanism.
+The ```drastic.metadata.MetadataValidator``` class provides a mechanism for validating collection/resource metadata when submitted via a webform.  Once the CDMI layer is complete it is expected that it will use the same mechanism.
 
 
-## Command Line Interface 
+## Command Line Interface
 
-Whenever indigo is installed in a sub-component's virtualenv, the indigo command is available from inside the activated virtualenv to interact with the system.  
+Whenever drastic is installed in a sub-component's virtualenv, the drastic command is available from inside the activated virtualenv to interact with the system.  
 
-### Create the database 
+### Create the database
 
 Creates/Syncs the database defined in configuration with the latest models.  
 
 ```
-indigo create
+drastic create
 ```
 
-		
-### Reset the database 
+
+### Reset the database
 
 Deletes the entire database (defined in config), and is irreversible.  Should only be used during development.
 
 ```
-indigo zap 
+drastic zap
 ```
 
-### Create a user 
+### Create a user
 
 Provides a guided interface to create a new user. You will be asked if this is an administrative user, their password and their email address.  
 
 ```
-indigo user-create
+drastic user-create
 ```
 
-    
-### List all users 
 
-Displays a list of all known users within the current indigo system.
+### List all users
+
+Displays a list of all known users within the current drastic system.
 
 ```
-indigo user-list
+drastic user-list
 ```
 
 ### Create a group
 
 Creates a new group within the system. Requires the name of the group and the name of the owning user.
 
-``` 
-indigo group-create GROUP_NAME OWNING_USERNAME
+```
+drastic group-create GROUP_NAME OWNING_USERNAME
 ```
 
 
-### List all groups 
+### List all groups
 
-List all currently known groups 
+List all currently known groups
 
 ```
-indigo group-list
+drastic group-list
 ```
 
 
@@ -104,21 +104,21 @@ indigo group-list
 Adds a user to a group by specifying the group name and the username
 
 ```
-indigo group-add-user GROUP_NAME USER_NAME
+drastic group-add-user GROUP_NAME USER_NAME
 ```
 
 
 ### Delete a group
 
-Deletes the specified group 
+Deletes the specified group
 
 ```
-indigo group-delete GROUP_NAME
+drastic group-delete GROUP_NAME
 ```
-    
-### Ingest data 
 
-The ```ingest``` command is used to import existing data into the Indigo system.  By providing a directory the command will walk the files and sub-folders within that directory adding them as collections and resources in Indigo.  The created collection structure will mirror the provided local directory.
+### Ingest data
+
+The ```ingest``` command is used to import existing data into the Drastic system.  By providing a directory the command will walk the files and sub-folders within that directory adding them as collections and resources in Drastic.  The created collection structure will mirror the provided local directory.
 
 This command needs at least 3 arguments, they are:
 
@@ -134,12 +134,12 @@ By default, all created resources are stored in Cassandra (the system default), 
 
 Imports all of the folders and resources under /data into Cassandra.
 ```
-indigo ingest --group TEST_GROUP--user TEST_USER --folder /data 
+drastic ingest --group TEST_GROUP--user TEST_USER --folder /data
 ```
 
-##### Import into Indigo but leave the resources on disk
+##### Import into Drastic but leave the resources on disk
 
 In this case it is important that the agent is configured to point to /data for its disk storage as the URLs created will be relative to this. So a local file /data/test/somedata.csv will be given the URL ```file://192.168.10.10/test/somedata.csv```.
 ```
-indigo ingest --group TEST_GROUP--user TEST_USER --folder /data --localip 192.168.10.10 --noimport
+drastic ingest --group TEST_GROUP--user TEST_USER --folder /data --localip 192.168.10.10 --noimport
 ```

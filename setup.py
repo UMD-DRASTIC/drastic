@@ -18,9 +18,9 @@ setup(
     extras_require={},
     long_description="Core library for Drastic development",
     author='Archive Analytics',
-    maintainer_email='@archiveanalytics.com',
+    maintainer_email='jansen@umd.edu',
     license="Apache License, Version 2.0",
-    url='https://bitbucket.org/archivea/libdrastic',
+    url='https://github.com/UMD-DRASTIC/drastic/',
     install_requires=[
         "cassandra-driver==2.5.1",
         "passlib==1.6.2",
