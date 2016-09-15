@@ -1,10 +1,10 @@
 import unittest
 
-from indigo.models.collection import Collection
-from indigo.models.user import User
-from indigo.models.group import Group
-from indigo.models.resource import Resource
-from indigo.models.errors import (
+from drastic.models.collection import Collection
+from drastic.models.user import User
+from drastic.models.group import Group
+from drastic.models.resource import Resource
+from drastic.models.errors import (
     ResourceConflictError,
     NoSuchCollection
 )

@@ -1,7 +1,7 @@
 import unittest
 
-from indigo.models import Node
-from indigo.models.errors import NodeConflictError
+from drastic.models import Node
+from drastic.models.errors import NodeConflictError
 
 from nose.tools import raises
 

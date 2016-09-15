@@ -1,19 +1,8 @@
 """Resource Model
-
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 from datetime import datetime
 import json
@@ -22,12 +11,12 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 from paho.mqtt import publish
 
-from indigo.models.errors import (
+from drastic.models.errors import (
     NoSuchCollectionError,
     ResourceConflictError
 )
-from indigo.acl import serialize_acl_metadata
-from indigo.util import (
+from drastic.acl import serialize_acl_metadata
+from drastic.util import (
     decode_meta,
     default_cdmi_id,
     meta_cassandra_to_cdmi,
@@ -83,7 +72,7 @@ class Resource(Model):
             kwargs['metadata'] = meta_cdmi_to_cassandra(kwargs['metadata'])
 
         # Check the container exists
-        from indigo.models.collection import Collection
+        from drastic.models.collection import Collection
         collection = Collection.find_by_path(kwargs['container'])
 
         if not collection:
@@ -144,7 +133,7 @@ class Resource(Model):
     def get_container(self):
         """Returns the parent collection of the resource"""
         # Check the container exists
-        from indigo.models.collection import Collection
+        from drastic.models.collection import Collection
         container = Collection.find_by_path(self.container)
         if not container:
             raise NoSuchCollectionError(self.container)

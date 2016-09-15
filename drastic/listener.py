@@ -1,19 +1,3 @@
-# Listener
-#
-# Copyright 2015 Archive Analytics Solutions
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Listener
 Listens for CRUD events to the database and executes user-defined scripts based on those events.
 
@@ -27,6 +11,9 @@ Options:
   --quiet     Decrease logging output to WARNING level.
 
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 import logging
 import json
@@ -44,8 +31,8 @@ import paho.mqtt.client as mqtt
 # noinspection PyPackageRequirements
 import magic
 
-from indigo import get_config
-from indigo import drivers
+from drastic import get_config
+from drastic import drivers
 import log
 from models import initialise, Collection
 from util import meta_cassandra_to_cdmi
@@ -243,7 +230,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTERM, shutdown)
 
     cfg = get_config(None)
-    initialise(cfg.get('KEYSPACE', 'indigo'), hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
+    initialise(cfg.get('KEYSPACE', 'drastic'), hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
 
     if arguments['--verbose']:
         logger.setLevel(logging.DEBUG)

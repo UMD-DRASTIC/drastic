@@ -1,7 +1,7 @@
-from indigo.models import initialise, sync
+from drastic.models import initialise, sync
 from cassandra.cqlengine.management import drop_keyspace
 
-TEST_KEYSPACE="indigo_test"
+TEST_KEYSPACE="drastic_test"
 
 def setup_package():
     initialise(TEST_KEYSPACE, strategy="SimpleStrategy", repl_factor=1)

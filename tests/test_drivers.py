@@ -1,7 +1,7 @@
 import unittest
 
-from indigo.drivers import get_driver, NoSuchDriverException
-from indigo.models.blob import Blob, BlobPart
+from drastic.drivers import get_driver, NoSuchDriverException
+from drastic.models.blob import Blob, BlobPart
 
 from nose.tools import raises
 
