@@ -17,6 +17,7 @@ limitations under the License.
 import cassandra
 
 import cassandra.cluster
+from cassandra import ConsistencyLevel
 from cassandra.cqlengine import connection
 from cassandra.cqlengine.management import (
     create_keyspace_network_topology,
@@ -40,7 +41,7 @@ logger = init_log('models')
 
 
 def initialise(keyspace, hosts=('127.0.0.1',), strategy='SimpleStrategy',
-               repl_factor=1):
+               repl_factor=1, consistency=ConsistencyLevel.ONE):
     """Initialise Cassandra connection"""
     num_retries = 6
     retry_timeout = 1
@@ -49,7 +50,7 @@ def initialise(keyspace, hosts=('127.0.0.1',), strategy='SimpleStrategy',
         try:
             logger.info('Connecting to Cassandra keyspace "{2}" '
                         'on "{0}" with strategy "{1}"'.format(hosts, strategy, keyspace))
-            connection.setup(hosts, keyspace, protocol_version=3)
+            connection.setup(hosts, "system", protocol_version=3, consistency=ConsistencyLevel.ONE)
 
             if strategy is 'SimpleStrategy':
                 create_keyspace_simple(keyspace, repl_factor, True)

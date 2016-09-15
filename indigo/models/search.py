@@ -66,7 +66,7 @@ class SearchIndex(Model):
 
             return None
 
-        #terms = [t for t in termstrings if not cls.is_stop_word(t)]
+        # terms = [t for t in termstrings if not cls.is_stop_word(t)]
 
         result_objects = []
         for t in termstrings:
@@ -77,7 +77,7 @@ class SearchIndex(Model):
         results = []
         for result in result_objects:
             results.append(get_object(result, user))
-        #results = filter(lambda x: x, results)
+        # results = filter(lambda x: x, results)
         results = [x for x in results if x]
 
         # Do some sane ordering here to group together by ID and
