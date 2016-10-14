@@ -19,7 +19,7 @@ setup(
     long_description="Core library for Drastic development",
     author='Archive Analytics',
     maintainer_email='jansen@umd.edu',
-    license="Apache License, Version 2.0",
+    license="GNU Affero General Public License v3",
     url='https://github.com/UMD-DRASTIC/drastic/',
     install_requires=[
         "cassandra-driver==2.5.1",
@@ -36,7 +36,7 @@ setup(
     },
     classifiers=[
         "Development Status :: 4 - Beta",
-        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: GNU Affero General Public License v3",
         "Programming Language :: Python :: 2.7",
         "Topic :: Internet :: WWW/HTTP :: WSGI",
         "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
