@@ -47,6 +47,8 @@ def initialise(keyspace, hosts=('127.0.0.1',), strategy='SimpleStrategy',
             else:
                 create_keyspace_network_topology(keyspace, {}, True)
 
+            connection.setup(hosts, keyspace, protocol_version=3, consistency=ConsistencyLevel.ONE)
+
             break
         except cassandra.cluster.NoHostAvailable:
             logger.warning('Unable to connect to Cassandra. Retrying in {0} seconds...'.format(retry_timeout))
