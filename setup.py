@@ -23,7 +23,7 @@ setup(
     license="GNU AFFERO GENERAL PUBLIC LICENSE, Version 3",
     url='https://github.com/UMD-DRASTIC/drastic',
     install_requires=[
-        "cassandra-driver==3.2.2",
+        "cassandra-driver==3.6.0",
         "passlib==1.6.2",
         "nose==1.3.6",
         "blist==1.3.6",

@@ -39,7 +39,7 @@ class SearchIndex(Model):
                               term=idx.term,
                               term_type=idx.term_type)
         return idx
-    
+
     @classmethod
     def find(cls, termstrings, user):
         from drastic.models.collection import Collection
@@ -162,7 +162,7 @@ class SearchIndex(Model):
             else:
                 terms.extend([(f, el) for el in clean(attr)])
                 terms.append((f, clean_full(attr)))
-        
+
 
         object_type = object.__class__.__name__
         for term_type, term in terms:
@@ -171,9 +171,9 @@ class SearchIndex(Model):
             if len(term) < 2:
                 continue
             SearchIndex.create(term=term,
-                                term_type=term_type,
-                                object_type=object_type,
-                                object_path=object.path)
+                               term_type=term_type,
+                               object_type=object_type,
+                               object_path=object.path)
             result_count += 1
         return result_count
 

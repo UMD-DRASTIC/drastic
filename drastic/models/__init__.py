@@ -8,6 +8,7 @@ __license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 import cassandra
 
 import cassandra.cluster
+from cassandra import ConsistencyLevel
 from cassandra.cqlengine import connection
 from cassandra.cqlengine.management import (
     create_keyspace_network_topology,
@@ -33,17 +34,36 @@ from drastic.log import init_log
 logger = init_log('models')
 
 
-def initialise(keyspace="drastic", hosts=('127.0.0.1',), strategy='SimpleStrategy',
-               repl_factor=1):
+def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLevel.ONE):
     """Initialise Cassandra connection"""
     num_retries = 6
     retry_timeout = 1
 
     for retry in xrange(num_retries):
         try:
-            logger.info('Connecting to Cassandra keyspace "{2}" '
-                        'on "{0}" with strategy "{1}"'.format(hosts, strategy, keyspace))
-            connection.setup(hosts, keyspace, protocol_version=3)
+            logger.info('Connecting to Cassandra keyspace "{1}" '
+                        'on hosts "{0}"'.format(hosts, keyspace))
+            connection.setup(hosts, keyspace, protocol_version=3, consistency=consistency)
+            break
+        except cassandra.cluster.NoHostAvailable:
+            logger.warning(
+                'Unable to connect to Cassandra. Retrying in {0} seconds...'.format(retry_timeout))
+            time.sleep(retry_timeout)
+            retry_timeout *= 2
+
+
+def create_keyspace(keyspace="drastic", hosts=('127.0.0.1',), strategy='SimpleStrategy',
+                    repl_factor=1):
+    """Initialise Cassandra keyspace"""
+    num_retries = 6
+    retry_timeout = 1
+
+    for retry in xrange(num_retries):
+        try:
+            logger.info('Creating Cassandra keyspace "{2}" '
+                        'on hosts "{0}" with strategy "{1}" and replication factor "{3}"'
+                        .format(hosts, strategy, keyspace, repl_factor))
+            connection.setup(hosts, keyspace, protocol_version=3, consistency=ConsistencyLevel.ALL)
 
             if strategy is 'SimpleStrategy':
                 create_keyspace_simple(keyspace, repl_factor, True)
@@ -52,7 +72,8 @@ def initialise(keyspace="drastic", hosts=('127.0.0.1',), strategy='SimpleStrateg
 
             break
         except cassandra.cluster.NoHostAvailable:
-            logger.warning('Unable to connect to Cassandra. Retrying in {0} seconds...'.format(retry_timeout))
+            logger.warning(
+                'Unable to connect to Cassandra. Retrying in {0} seconds...'.format(retry_timeout))
             time.sleep(retry_timeout)
             retry_timeout *= 2
 

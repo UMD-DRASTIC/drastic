@@ -11,7 +11,8 @@ import sys
 from drastic import get_config
 from drastic.models.errors import GroupConflictError
 from drastic.models import (
-    initialise,
+    connect,
+    create_keyspace,
     sync
 )
 from drastic.ingest import do_ingest
@@ -43,6 +44,14 @@ def parse_arguments():
 # noinspection PyUnusedLocal
 def create(cfg):
     """Create the keyspace and the tables"""
+    create_keyspace(keyspace=cfg.get('KEYSPACE', 'drastic'),
+                    hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
+                    repl_factor=cfg.get('REPLICATION_FACTOR', 1))
+    # reconnect after above, which uses 'system' keyspace.
+    # Use consistent connection for schema changes
+    connect(keyspace=cfg.get('KEYSPACE', 'drastic'),
+            hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
+            consistency=CONSISTENCY_LEVEL.ALL)
     sync()
 
 
@@ -148,14 +157,14 @@ def main():
     args = parse_arguments()
     cfg = get_config(args.config)
 
-    initialise(keyspace=cfg.get('KEYSPACE', 'drastic'),
-               hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
-               repl_factor=cfg.get('REPLICATION_FACTOR', 1))
-
     command = args.command[0]
     if command == 'create':
         create(cfg)
-    elif command == 'user-create':
+    else:
+        connect(keyspace=cfg.get('KEYSPACE', 'drastic'),
+                hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
+
+    if command == 'user-create':
         user_add(cfg, args.command[1:])
     elif command == 'user-list':
         user_list(cfg)
