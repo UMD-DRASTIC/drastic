@@ -1,19 +1,9 @@
 """Resource Model
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 from cStringIO import StringIO
 import zipfile
@@ -25,11 +15,11 @@ from cassandra.cqlengine import (
 from cassandra.query import SimpleStatement
 from cassandra.cqlengine.models import Model
 
-from indigo import get_config
-from indigo.models import (
+from drastic import get_config
+from drastic.models import (
     Group,
 )
-from indigo.models.acl import (
+from drastic.models.acl import (
     Ace,
     acl_cdmi_to_cql,
     acl_list_to_cql,
@@ -37,7 +27,7 @@ from indigo.models.acl import (
     str_to_acemask,
     cdmi_str_to_acemask,
 )
-from indigo.util import default_cdmi_id
+from drastic.util import default_cdmi_id
 
 
 static_fields = ["checksum",
@@ -153,7 +143,7 @@ class DataObject(Model):
         """Replace the static acl with the given cql string"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement(u"""UPDATE data_object SET acl = {}
             WHERE uuid=%s""".format(acl_cql))
@@ -177,7 +167,7 @@ class DataObject(Model):
         """Delete all blobs for the specified uuid"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement("""DELETE FROM data_object WHERE uuid=%s""")
         session.execute(query, (uuid,))
@@ -197,7 +187,7 @@ class DataObject(Model):
         """Update a data object"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         for arg in kwargs:
             # For static fields we can't use the name in the where condition
@@ -217,7 +207,7 @@ class DataObject(Model):
         """
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement(u"""UPDATE data_object SET acl = acl + {}
             WHERE uuid=%s""".format(acl_cql))

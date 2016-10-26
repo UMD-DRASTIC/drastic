@@ -1,20 +1,11 @@
 # coding=utf-8
 """Ingest workflow management tool
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
+
 import os
 import re
 import sys
@@ -26,7 +17,7 @@ import docopt
 import FileNameSource
 import writer
 from FileNameSource import CreateFileNameSource
-from indigo.models import initialise
+from drastic.models import initialise
 
 
 # noinspection PyUnusedLocal
@@ -89,9 +80,9 @@ def inject(args, cfg):
 
 ############### Utility Routines ##################
 def load_config(cfg=None):
-    k = [os.path.expanduser(f) for f in ['~/.indigo-ingest.config', cfg] if bool(f)]
+    k = [os.path.expanduser(f) for f in ['~/.drastic-ingest.config', cfg] if bool(f)]
 
-    defaults = dict(KEYSPACE='indigo', user='indigo', password='indigo', host='localhost')
+    defaults = dict(KEYSPACE='drastic', user='drastic', password='drastic', host='localhost')
     cfg = configparser.SafeConfigParser(defaults)
     cfg.read(*k)
     return cfg
@@ -116,7 +107,7 @@ def decode_str(s):
 ############### Utility Routines ##################
 
 args_doc = \
-u'''Ingest data files into Indigo from a directory tree
+u'''Ingest data files into Drastic from a directory tree
 
 Usage:
      ingest prepare  (--walk|--read) [--config=CONFIG  --dataset=DATASET_NAME --prefix=PREFIX  (--postgres|--sqlite)]  (<source_directory>|-)
@@ -133,12 +124,12 @@ Usage:
      summary   -- list the counts of all the states
 
  Options:
-    --config=CONFIG          # location of config file [ default : ~/.indigo-ingest.cfg ]
+    --config=CONFIG          # location of config file [ default : ~/.drastic-ingest.cfg ]
     --prefix=PREFIX          # specify the directory that is the root of the local vault [ default: /data ]
     --dataset=DATASET_NAME   # a name for the prepared data [ default: resource ]
     --localip=LOCAL_IP       # specify the ip address to use when linking, i.e. where the files will actually reside [ default: 127.0.0.1 ]
-    --copy                   # copy the data into Indigo  -- one of copy or link must be specified...
-    --link                   # link to the file from Indigo, i.e. reference, not copy.
+    --copy                   # copy the data into Drastic  -- one of copy or link must be specified...
+    --link                   # link to the file from Drastic, i.e. reference, not copy.
     --walk                   # walk the source tree to get the list of files
     --read                   # read the list of filenames from a file or stdin
     --postgres               # read file names from or store filenames to a postgres database
@@ -147,7 +138,7 @@ Usage:
 '''
 help_text=u'''
 The basic workflow provided by this utility is to acquire a list of file names and inject
-them into the Indigo store.
+them into the Drastic store.
 
 The list of file names can be stored into a persistent work queue in a postgres or sqlite3
 database (using the prepare phase).  It is strongly recommended that this phase be used for anything
@@ -167,16 +158,16 @@ e.g.
 CASSANDRA_HOSTS = 192.168.56.101, 192.168.56.102
 
 [postgres]
-username = indigo
-password = indigo
-database = indigo
+username = drastic
+password = drastic
+database = drastic
 host = 192.168.56.101
 
-N.B. It typically only makes sense to link to files that are logically or physically  "on" an indigo node, since access
-to them will go via the indigo server.  i.e. this is a local file access.
+N.B. It typically only makes sense to link to files that are logically or physically  "on" an drastic node, since access
+to them will go via the drastic server.  i.e. this is a local file access.
 
 Remote file access is not yet supported. Moreover, for copy and link ( not send ) , the injection bypasses normal
-indigo access control, and so typically can only work on an indigo server.  Send can work from anywhere, and supports
+drastic access control, and so typically can only work on an drastic server.  Send can work from anywhere, and supports
 embedded files, but not linked.
 
 '''
@@ -217,7 +208,7 @@ def main():
         except:
             cassandra_ip = ['127.0.0.1']
 
-        initialise(keyspace='indigo', hosts=cassandra_ip)
+        initialise(keyspace='drastic', hosts=cassandra_ip)
         if args['inject']: return inject(args, cfg)
         if args['validate']:
             raise NotImplementedError

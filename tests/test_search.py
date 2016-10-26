@@ -1,9 +1,9 @@
 import unittest
 
-from indigo.models.search import SearchIndex
-from indigo.models.collection import Collection
-from indigo.models.user import User
-from indigo.models.group import Group
+from drastic.models.search import SearchIndex
+from drastic.models.collection import Collection
+from drastic.models.user import User
+from drastic.models.group import Group
 
 
 from nose.tools import raises

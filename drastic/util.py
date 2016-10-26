@@ -1,19 +1,9 @@
 """Utilities package
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 import collections
 import functools
@@ -31,7 +21,7 @@ from time import time as timestamp
 import logging
 from cassandra.util import uuid_from_time
 
-from indigo.log import init_log
+from drastic.log import init_log
 
 
 IDENT_PEN = 42223
@@ -118,7 +108,7 @@ class log_with(object):
          """
         # set logger if it was not set earlier
         if not self.logger:
-            self.logger = init_log('indigo')
+            self.logger = init_log('drastic')
 
         @functools.wraps(func)
         def wrapper(*args, **kwds):

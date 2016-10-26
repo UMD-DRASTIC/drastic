@@ -1,7 +1,7 @@
 import unittest
 import StringIO
 
-from indigo.metadata import (MetadataValidator,
+from drastic.metadata import (MetadataValidator,
                              get_resource_validator,
                              get_collection_validator)
 

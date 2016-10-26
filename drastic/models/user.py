@@ -1,19 +1,8 @@
 """User Model
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
 
 from cassandra.cqlengine import columns
@@ -21,9 +10,9 @@ from cassandra.cqlengine.models import Model
 from passlib.hash import pbkdf2_sha256
 import json
 
-from indigo.models.group import Group
-from indigo.models.errors import UserConflictError
-from indigo.util import (
+from drastic.models.group import Group
+from drastic.models.errors import UserConflictError
+from drastic.util import (
     datetime_serializer,
     default_uuid,
     log_with,
@@ -58,7 +47,7 @@ class User(Model):
         We intercept the create call so that we can correctly
         hash the password into an unreadable form
         """
-        from indigo.models import Notification
+        from drastic.models import Notification
         size = 32
         if 'hard' in kwargs:
             rounds = 20
@@ -90,7 +79,7 @@ class User(Model):
         return user
 
     def delete(self, username=None):
-        from indigo.models import Notification
+        from drastic.models import Notification
         state = self.mqtt_get_state()
         super(User, self).delete()
         payload = self.mqtt_payload(state, {})
@@ -172,7 +161,7 @@ class User(Model):
 
     def update(self, **kwargs):
         """Update a user"""
-        from indigo.models import Notification
+        from drastic.models import Notification
         pre_state = self.mqtt_get_state()
         # If we want to update the password we need to encrypt it first
         if "password" in kwargs:

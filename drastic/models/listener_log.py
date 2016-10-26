@@ -1,19 +1,8 @@
 """Listener Logging Model
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
 
 import json
@@ -27,8 +16,8 @@ from cassandra.util import uuid_from_time
 from cassandra.util import datetime_from_uuid1
 from cassandra.query import SimpleStatement
 
-from indigo import get_config
-from indigo.util import (
+from drastic import get_config
+from drastic.util import (
     datetime_serializer,
     default_time,
     default_date,
@@ -52,7 +41,7 @@ class ListenerLog(Model):
         """Return the last logs"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         # I couldn't find how to disable paging in cqlengine in the "model" view
         # so I create the cal query directly

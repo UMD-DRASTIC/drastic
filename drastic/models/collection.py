@@ -1,34 +1,24 @@
 """Collection Model
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 from datetime import datetime
 from cassandra.cqlengine import connection
 from cassandra.query import SimpleStatement
 import json
 
-from indigo import get_config
-from indigo.models import (
+from drastic import get_config
+from drastic.models import (
     TreeEntry
 )
-from indigo.models.acl import (
+from drastic.models.acl import (
     acemask_to_str,
     serialize_acl_metadata
 )
-from indigo.util import (
+from drastic.util import (
     datetime_serializer,
     decode_meta,
     meta_cassandra_to_cdmi,
@@ -37,7 +27,7 @@ from indigo.util import (
     merge,
     split,
 )
-from indigo.models.errors import (
+from drastic.models.errors import (
     CollectionConflictError,
     ResourceConflictError,
     NoSuchCollectionError
@@ -67,8 +57,8 @@ class Collection(object):
     @classmethod
     def create(cls, name, container='/', metadata=None, username=None):
         """Create a new collection"""
-        from indigo.models import Notification
-        from indigo.models import Resource
+        from drastic.models import Notification
+        from drastic.models import Resource
         path = merge(container, name)
         # Check if parent collection exists
         parent = Collection.find(container)
@@ -135,12 +125,12 @@ class Collection(object):
 
     def delete(self, username=None):
         """Delete a collection and the associated row in the tree entry table"""
-        from indigo.models import Notification
+        from drastic.models import Notification
         if self.is_root:
             return
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement("""DELETE FROM tree_entry WHERE container=%s""")
         session.execute(query, (self.path,))
@@ -159,7 +149,7 @@ class Collection(object):
     def delete_all(cls, path, username=None):
         """Delete recursively all sub-collections and all resources contained
         in a collection at 'path'"""
-        from indigo.models import Resource
+        from drastic.models import Resource
         parent = Collection.find(path)
         if not parent:
             return
@@ -276,7 +266,7 @@ class Collection(object):
         return decode_meta(self.entry.container_metadata.get(key, ""))
 
     def index(self):
-        from indigo.models import SearchIndex
+        from drastic.models import SearchIndex
         self.reset()
         SearchIndex.index(self, ['name', 'metadata'])
 
@@ -300,7 +290,7 @@ class Collection(object):
         return json.dumps(payload, default=datetime_serializer)
 
     def reset(self):
-        from indigo.models import SearchIndex
+        from drastic.models import SearchIndex
         SearchIndex.reset(self.path)
 
     def to_dict(self, user=None):
@@ -323,7 +313,7 @@ class Collection(object):
 
     def update(self, **kwargs):
         """Update a collection"""
-        from indigo.models import Notification
+        from drastic.models import Notification
         pre_state = self.mqtt_get_state()
         kwargs['container_modified_ts'] = datetime.now()
         if 'metadata' in kwargs:

@@ -1,20 +1,11 @@
 # coding=utf-8
 """Ingest workflow management tool
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
+
 import abc
 import collections
 import os
@@ -22,12 +13,12 @@ from collections import OrderedDict
 from os.path import abspath
 
 from cassandra.cqlengine.query import BatchQuery
-from indigo.models.blob import BlobPart
-from indigo.models.blob import Blob
-from indigo.models.collection import Collection
-from indigo.models.errors import (ResourceConflictError, NoSuchCollectionError)
-from indigo.models.resource import Resource
-from indigo.models.search import SearchIndex
+from drastic.models.blob import BlobPart
+from drastic.models.blob import Blob
+from drastic.models.collection import Collection
+from drastic.models.errors import (ResourceConflictError, NoSuchCollectionError)
+from drastic.models.resource import Resource
+from drastic.models.search import SearchIndex
 from socket import error as SocketError
 
 
@@ -152,7 +143,7 @@ class CopyWriter(writer):
                     resource.update(url=url, size=size)
                     ## So now tidy up the old blob
                     if old_resource_id:
-                        from indigo.models.id_index import IDIndex
+                        from drastic.models.id_index import IDIndex
                         blob = Blob.find(old_resource_id)
                         if blob:
                             for k in blob.parts :

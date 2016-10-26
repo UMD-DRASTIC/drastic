@@ -1,8 +1,8 @@
 import unittest
 
-from indigo.models.user import User
-from indigo.models.group import Group
-from indigo.models.errors import UserConflictError
+from drastic.models.user import User
+from drastic.models.group import Group
+from drastic.models.errors import UserConflictError
 
 from nose.tools import raises
 

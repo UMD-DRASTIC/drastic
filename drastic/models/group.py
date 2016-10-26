@@ -3,20 +3,10 @@
 Groups contain users and are used for determining what collections
 and resources are available to those users.
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 # TODO: Improve the get users functions which will be slow if there are a lot
 # of users
@@ -26,8 +16,8 @@ from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 import json
 
-from indigo.models.errors import GroupConflictError
-from indigo.util import (
+from drastic.models.errors import GroupConflictError
+from drastic.util import (
     datetime_serializer,
     default_uuid
 )
@@ -48,7 +38,7 @@ class Group(Model):
           - added for the username which were added
           - already_there for username already in the group
           - not_added for username not found"""
-        from indigo.models import User
+        from drastic.models import User
         added = []
         not_added = []
         already_there = []
@@ -68,7 +58,7 @@ class Group(Model):
     def create(cls, **kwargs):
         """Create a new group, raise an exception if the group already
         exists"""
-        from indigo.models import Notification
+        from drastic.models import Notification
         kwargs['name'] = kwargs['name'].strip()
         if 'username' in kwargs:
             username = kwargs['username']
@@ -100,8 +90,8 @@ class Group(Model):
 
     def delete(self, username=None):
         # Slow and ugly,
-        from indigo.models import Notification
-        from indigo.models import User
+        from drastic.models import Notification
+        from drastic.models import User
         state = self.mqtt_get_state()
         for u in User.objects.all():
             if self.name in u.groups:
@@ -117,7 +107,7 @@ class Group(Model):
         # through all of the Users but the __in suffix for
         # queries won't let me query all users where this
         # objects ID appears in the User group field.
-        from indigo.models import User
+        from drastic.models import User
         return [u for u in User.objects.all()
                 if u.active and self.name in u.groups]
 
@@ -127,7 +117,7 @@ class Group(Model):
         # through all of the Users but the __in suffix for
         # queries won't let me query all users where this
         # objects ID appears in the User group field.
-        from indigo.models import User
+        from drastic.models import User
         return [u.name for u in User.objects.all()
                 if u.active and self.name in u.groups]
 
@@ -156,7 +146,7 @@ class Group(Model):
             removed for the username who were removed
             not_there for the username who weren't in the gr
             not_exist for the usernames who doesn't exist"""
-        from indigo.models import User
+        from drastic.models import User
         not_exist = []
         removed = []
         not_there = []
@@ -182,7 +172,7 @@ class Group(Model):
 
     def update(self, **kwargs):
         """Update a group"""
-        from indigo.models import Notification
+        from drastic.models import Notification
         pre_state = self.mqtt_get_state()
         if 'username' in kwargs:
             username = kwargs['username']

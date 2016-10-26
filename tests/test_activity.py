@@ -1,6 +1,6 @@
 import unittest
 
-from indigo.models.activity import Activity
+from drastic.models.activity import Activity
 
 class ActivityTest(unittest.TestCase):
 

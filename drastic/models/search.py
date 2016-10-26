@@ -9,26 +9,16 @@ provides a simple index (and very, very simple retrieval algorithm) for
 matching words with resources and collections.  It does *not* search the
 data itself.
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 from cassandra.cqlengine import columns
 from cassandra.cqlengine.models import Model
 import logging
 
-from indigo.util import default_uuid
+from drastic.util import default_uuid
 
 class SearchIndex(Model):
     """SearchIndex Model"""
@@ -41,7 +31,7 @@ class SearchIndex(Model):
     @classmethod
     def create(cls, **kwargs):
         """Create a new indexed term"""
-        from indigo.models import IDSearch
+        from drastic.models import IDSearch
         idx = super(SearchIndex, cls).create(**kwargs)
 
         # Create a row in the ID search table
@@ -52,8 +42,8 @@ class SearchIndex(Model):
     
     @classmethod
     def find(cls, termstrings, user):
-        from indigo.models.collection import Collection
-        from indigo.models.resource import Resource
+        from drastic.models.collection import Collection
+        from drastic.models.resource import Resource
 
         def get_object(obj, user):
             """Return the object corresponding to the SearchIndex object"""
@@ -121,7 +111,7 @@ class SearchIndex(Model):
     @classmethod
     def reset(cls, object_path):
         """Delete objects from the SearchIndex"""
-        from indigo.models import IDSearch
+        from drastic.models import IDSearch
         rows = IDSearch.find(object_path)
         for id_obj in rows:
             obj = cls.objects.filter(term=id_obj.term,

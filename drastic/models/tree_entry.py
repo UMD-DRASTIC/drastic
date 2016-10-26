@@ -1,19 +1,9 @@
 """ Model
 
-Copyright 2015 Archive Analytics Solutions
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 """
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 from cassandra.cqlengine.models import Model
 from cassandra.query import SimpleStatement
@@ -23,16 +13,16 @@ from cassandra.cqlengine import (
 )
 from datetime import datetime
 
-from indigo import get_config
-from indigo.util import (
+from drastic import get_config
+from drastic.util import (
     default_cdmi_id,
     merge,
     meta_cdmi_to_cassandra,
 )
-from indigo.models import (
+from drastic.models import (
     Group
 )
-from indigo.models.acl import (
+from drastic.models.acl import (
     Ace,
     acl_cdmi_to_cql,
     acl_list_to_cql,
@@ -112,7 +102,7 @@ class TreeEntry(Model):
         """
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement(u"""UPDATE tree_entry SET container_acl={} 
             WHERE container=%s""".format(acl_cql))
@@ -136,7 +126,7 @@ class TreeEntry(Model):
         """
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement(u"""UPDATE tree_entry SET acl={} 
             WHERE container=%s and name=%s""".format(acl_cql))
@@ -164,7 +154,7 @@ class TreeEntry(Model):
         """Update a collection"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         for arg in kwargs:
             # For static fields we can't use the name in the where condition
@@ -183,7 +173,7 @@ class TreeEntry(Model):
         """Update the static acl with the given cql string"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement(u"""UPDATE tree_entry SET container_acl=container_acl+{} 
             WHERE container=%s""".format(acl_cql))
@@ -206,7 +196,7 @@ class TreeEntry(Model):
         """Update the acl with the given cql string"""
         cfg = get_config(None)
         session = connection.get_session()
-        keyspace = cfg.get('KEYSPACE', 'indigo')
+        keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
         query = SimpleStatement(u"""UPDATE tree_entry SET acl=acl+{} 
             WHERE container=%s and name=%s""".format(acl_cql))

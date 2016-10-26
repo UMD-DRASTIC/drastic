@@ -44,7 +44,7 @@ import paho.mqtt.client as mqtt
 # noinspection PyPackageRequirements
 import magic
 
-from indigo import get_config
+from drastic import get_config
 import log
 from models import (
     initialise,
@@ -259,7 +259,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGTERM, shutdown)
 
     cfg = get_config(None)
-    initialise(keyspace=cfg.get('KEYSPACE', 'indigo'),
+    initialise(keyspace=cfg.get('KEYSPACE', 'drastic'),
                hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
                repl_factor=cfg.get('REPLICATION_FACTOR', 1))
 
