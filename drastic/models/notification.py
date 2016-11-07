@@ -4,6 +4,119 @@
 __copyright__ = "Copyright (C) 2016 University of Maryland"
 __license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
+import json
+import paho.mqtt.publish as publish
+import logging
+from cassandra.cqlengine import columns
+from cassandra.cqlengine.models import (
+    connection,
+    Model
+    )
+from cassandra.query import SimpleStatement
+from drastic import get_config
+from drastic.util import (
+    default_time,
+    default_date,
+    last_x_days
+)
+
+
+# Operations that could lead to a new notification
+OP_CREATE = "create"
+OP_DELETE = "delete"
+OP_UPDATE = "update"
+OP_INDEX = "index"
+OP_MOVE = "move"
+
+# Types of objects with the element needed to identify the object
+OBJ_RESOURCE = "resource"         # path
+OBJ_COLLECTION = "collection"     # path
+OBJ_USER = "user"                 # id
+OBJ_GROUP = "group"               # id
+
+TEMPLATES = {
+    OP_CREATE : {},
+    OP_DELETE : {},
+    OP_UPDATE : {},
+    OP_INDEX : {},
+    OP_MOVE : {}
+}
+
+TEMPLATES[OP_CREATE][OBJ_RESOURCE] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new item '<a href='{% url "archive:resource_view" path=object.path %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+
+"""
+TEMPLATES[OP_CREATE][OBJ_COLLECTION] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new collection '<a href='{% url "archive:view" path=object.path %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_CREATE][OBJ_USER] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new user '<a href='{% url "users:view" name=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_CREATE][OBJ_GROUP] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} created a new group '<a href='{% url "groups:view" name=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+
+TEMPLATES[OP_DELETE][OBJ_RESOURCE] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted the '{{ object.name }}' item</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_DELETE][OBJ_COLLECTION] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted the collection '{{ object.name }}'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_DELETE][OBJ_USER] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted user '{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_DELETE][OBJ_GROUP] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} deleted group '{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+
+TEMPLATES[OP_UPDATE][OBJ_RESOURCE] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited the '<a href='{% url "archive:resource_view" path=object.path %}'>{{ object.name }}</a>' item</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_UPDATE][OBJ_COLLECTION] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited the '<a href='{% url "archive:view" path=object.path %}'>{{ object.name }}</a>' collection </span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_UPDATE][OBJ_USER] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited user '<a href='{% url "users:view" name=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
+TEMPLATES[OP_UPDATE][OBJ_GROUP] = """
+{% load gravatar %}
+{% gravatar user.email 40 %}
+<span class="activity-message">{{ user.name }} edited group '<a href='{% url "groups:view" name=object.name %}'>{{ object.name }}</a>'</span>
+<span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
+"""
 
 class Notification(Model):
     """Notification Model"""
@@ -18,7 +131,7 @@ class Notification(Model):
     # The uuid of the object concerned, the key used to find the corresponding
     # object (path, uuid, ...)
     object_uuid = columns.Text(primary_key=True)
-    
+
     # The user who initiates the operation
     username = columns.Text()
     # True if the corresponding worklow has been executed correctly (for Move
