@@ -7,6 +7,7 @@ __license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
 import argparse
 import sys
+from cassandra import ConsistencyLevel
 
 from drastic import get_config
 from drastic.models.errors import GroupConflictError
@@ -51,7 +52,7 @@ def create(cfg):
     # Use consistent connection for schema changes
     connect(keyspace=cfg.get('KEYSPACE', 'drastic'),
             hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
-            consistency=CONSISTENCY_LEVEL.ALL)
+            consistency=ConsistencyLevel.ALL)
     sync()
 
 
