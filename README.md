@@ -10,10 +10,10 @@ Configuration is specified with the DRASTIC_CONFIG environment variable
 export DRASTIC_CONFIG=settings
 ```
 
-The file at settings.py only needs to be changed should the Cassandra Keyspace name change.  By default the keyspace is called Drastic.
+The file at settings.py only needs to be changed should the Cassandra Keyspace name change.  By default the keyspace is called 'drastic'.
 
 
-## Functionality provided 
+## Functionality provided
 
 ### Models
 
@@ -33,11 +33,11 @@ occur when writing to the database, such as UniqueError to be raised when an
 attempt is made to write a new Collection with the name of an existing one.
 
 
-## Command Line Interface 
+## Command Line Interface
 
-Whenever drastic is installed in a sub-component's virtualenv, the drastic command is available from inside the activated virtualenv to interact with the system.  
+Whenever drastic is installed in a sub-component's virtualenv, the 'drastic-admin' administrative command is available from inside the activated virtualenv to interact with the system. This is separate from the user-level client tool, available at http://github.com/UMD-DRASTIC/drastic-cli.
 
-### Create the database 
+### Create the database
 
 Creates/Syncs the database defined in configuration with the latest models.  
 
@@ -45,7 +45,7 @@ Creates/Syncs the database defined in configuration with the latest models.
 drastic create
 ```
 
-### Create a user 
+### Create a user
 
 Provides a guided interface to create a new user. You will be asked if this is an administrative user, their password and their email address.  
 
@@ -53,8 +53,8 @@ Provides a guided interface to create a new user. You will be asked if this is a
 drastic user-create
 ```
 
-    
-### List all users 
+
+### List all users
 
 Displays a list of all known users within the current drastic system.
 
@@ -66,14 +66,14 @@ drastic user-list
 
 Creates a new group within the system. Requires the name of the group and the name of the owning user.
 
-``` 
+```
 drastic group-create GROUP_NAME OWNING_USERNAME
 ```
 
 
-### List all groups 
+### List all groups
 
-List all currently known groups 
+List all currently known groups
 
 ```
 drastic group-list
@@ -91,13 +91,13 @@ drastic group-add-user GROUP_NAME USER_NAME
 
 ### Delete a group
 
-Deletes the specified group 
+Deletes the specified group
 
 ```
 drastic group-delete GROUP_NAME
 ```
-    
-### Ingest data 
+
+### Ingest data
 
 The ```ingest``` command is used to import existing data into the Drastic system.  By providing a directory the command will walk the files and sub-folders within that directory adding them as collections and resources in Drastic.  The created collection structure will mirror the provided local directory.
 
@@ -115,7 +115,7 @@ By default, all created resources are stored in Cassandra (the system default), 
 
 Imports all of the folders and resources under /data into Cassandra.
 ```
-drastic ingest --group TEST_GROUP--user TEST_USER --folder /data 
+drastic ingest --group TEST_GROUP--user TEST_USER --folder /data
 ```
 
 ##### Import into Drastic but leave the resources on disk

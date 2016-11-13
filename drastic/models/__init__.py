@@ -8,8 +8,10 @@ __license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 import cassandra
 
 import cassandra.cluster
+from cassandra.cluster import Cluster
 from cassandra import ConsistencyLevel
 from cassandra.cqlengine import connection
+from cassandra.query import dict_factory
 from cassandra.cqlengine.management import (
     create_keyspace_network_topology,
     drop_keyspace,
@@ -34,7 +36,7 @@ from drastic.log import init_log
 logger = init_log('models')
 
 
-def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLevel.ONE):
+def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLevel.LOCAL_ONE):
     """Initialise Cassandra connection"""
     num_retries = 6
     retry_timeout = 1
@@ -43,7 +45,12 @@ def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLev
         try:
             logger.info('Connecting to Cassandra keyspace "{1}" '
                         'on hosts "{0}"'.format(hosts, keyspace))
-            connection.setup(hosts, keyspace, protocol_version=3, consistency=consistency)
+            mycluster = Cluster(hosts, protocol_version=4,
+                                connect_timeout=5)
+            session = mycluster.connect(keyspace=keyspace)
+            session.row_factory = dict_factory
+            session.default_consistency_level = consistency
+            connection.set_session(session)
             break
         except cassandra.cluster.NoHostAvailable:
             logger.warning(
@@ -63,7 +70,12 @@ def create_keyspace(keyspace="drastic", hosts=('127.0.0.1',), strategy='SimpleSt
             logger.info('Creating Cassandra keyspace "{2}" '
                         'on hosts "{0}" with strategy "{1}" and replication factor "{3}"'
                         .format(hosts, strategy, keyspace, repl_factor))
-            connection.setup(hosts, keyspace, protocol_version=3, consistency=ConsistencyLevel.ALL)
+            mycluster = Cluster(hosts, protocol_version=4,
+                                connect_timeout=5)
+            session = mycluster.connect()
+            session.row_factory = dict_factory
+            session.default_consistency_level = ConsistencyLevel.ALL,
+            connection.set_session(session)
 
             if strategy is 'SimpleStrategy':
                 create_keyspace_simple(keyspace, repl_factor, True)

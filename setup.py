@@ -23,7 +23,7 @@ setup(
     license="GNU AFFERO GENERAL PUBLIC LICENSE, Version 3",
     url='https://github.com/UMD-DRASTIC/drastic',
     install_requires=[
-        "cassandra-driver==3.6.0",
+        "cassandra-driver==3.6.0",  # 3.7.1 has an issue, wait for 3.8 to upgrade
         "passlib==1.6.2",
         "nose==1.3.6",
         "blist==1.3.6",
@@ -32,7 +32,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            "drastic = drastic.cli:main"
+            "drastic-admin = drastic.cli:main"
         ],
     },
     classifiers=[
