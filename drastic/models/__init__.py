@@ -36,7 +36,8 @@ from drastic.log import init_log
 logger = init_log('models')
 
 
-def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLevel.LOCAL_ONE):
+def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLevel.LOCAL_ONE,
+            default_read_timeout=60):
     """Initialise Cassandra connection"""
     num_retries = 6
     retry_timeout = 1
@@ -50,6 +51,7 @@ def connect(keyspace="drastic", hosts=('127.0.0.1',), consistency=ConsistencyLev
             session = mycluster.connect(keyspace=keyspace)
             session.row_factory = dict_factory
             session.default_consistency_level = consistency
+            session.default_timeout = default_read_timeout
             connection.set_session(session)
             break
         except cassandra.cluster.NoHostAvailable:
