@@ -198,7 +198,7 @@ class DataObject(Model):
             else:
                 query = SimpleStatement("""UPDATE data_object SET {}=%s
                     WHERE uuid=%s and sequence_number=%s""".format(arg))
-                session.execute(query, (kwargs[arg], self.container, self.sequence_number))
+                session.execute(query, (kwargs[arg], self.uuid, self.sequence_number))
         return self
 
 
@@ -224,4 +224,3 @@ class DataObject(Model):
         """Update ACL from two lists of groups id, existing ACL are replaced"""
         cql_string = acl_list_to_cql(read_access, write_access)
         self.update_acl(cql_string)
-
