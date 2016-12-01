@@ -422,13 +422,13 @@ class Resource(object):
         pre_state = self.mqtt_get_state()
         kwargs['modified_ts'] = datetime.now()
         print kwargs
-        
+
         # user_uuid used for Notification
-        if 'user_uuid' in kwargs:
-            user_uuid = kwargs['user_uuid']
-            del kwargs['user_uuid']
+        if 'username' in kwargs:
+            username = kwargs['username']
+            del kwargs['username']
         else:
-            user_uuid = None
+            username = None
 
         # Metadata given in cdmi format are transformed to be stored in Cassandra
         if 'metadata' in kwargs:
@@ -445,7 +445,7 @@ class Resource(object):
         resc = Resource.find(self.path)
         post_state = resc.mqtt_get_state()
         payload = resc.mqtt_payload(pre_state, post_state)
-        Notification.update_resource(user_uuid, resc.path, payload)
+        Notification.update_resource(username, resc.path, payload)
 
         # Index the resource
         resc.index()
@@ -481,5 +481,3 @@ class Resource(object):
         if action in actions:
             return True
         return False
-
-
