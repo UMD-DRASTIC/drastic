@@ -47,6 +47,8 @@ class Collection(object):
         # Get name
         if self.is_root:
             self.name = u"Home"
+            self.path = self.entry.container
+            self.container, _ = split(self.path)
         elif self.entry.name == ".":
             _, self.name = split(self.entry.container)
             self.path = self.entry.container
