@@ -22,10 +22,10 @@ import time
 from drastic.models.group import Group
 from drastic.models.user import User
 from drastic.models.tree_entry import TreeEntry
-from drastic.models.collection import Collection
 from drastic.models.data_object import DataObject
 from drastic.models.listener_log import ListenerLog
 from drastic.models.resource import Resource
+from drastic.models.collection import Collection
 from drastic.models.search import SearchIndex
 from drastic.models.id_search import IDSearch
 from drastic.models.acl import Ace
