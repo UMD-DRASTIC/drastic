@@ -55,8 +55,12 @@ class Collection(object):
             self.container, _ = split(self.path)
         else:  # case where dealing with a child entry
             self.name = self.entry.name
-            self.path = self.entry.container + '/' + self.name
             self.container = self.entry.container
+            if self.container == '/':
+                self.path = '/' + self.name
+            else:
+                self.path = self.entry.container + '/' + self.name
+
         self.uuid = self.entry.uuid
         self.create_ts = self.entry.create_ts
 
