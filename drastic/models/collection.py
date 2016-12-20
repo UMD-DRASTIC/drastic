@@ -12,7 +12,8 @@ import json
 
 from drastic import get_config
 from drastic.models import (
-    TreeEntry
+    TreeEntry,
+    Resource
 )
 from drastic.models.acl import (
     acemask_to_str,
@@ -246,6 +247,21 @@ class Collection(object):
                 child_dataobject.append(entry.name)
         return (child_container, child_dataobject)
 
+
+    def get_child_objects(self):
+        entries = TreeEntry.objects.filter(container=self.path)
+        child_container = []
+        child_dataobject = []
+        for entry in list(entries):
+            if entry.name == '.':
+                continue
+            elif entry.name.endswith('/'):
+                child_container.append(Collection(entry))
+            else:
+                child_dataobject.append(Resource(entry))
+        return (child_container, child_dataobject)
+
+
     def get_child_resource_count(self):
         child_container, child_dataobject = self.get_child()
         return len(child_dataobject)
@@ -359,5 +375,3 @@ class Collection(object):
         if action in actions:
             return True
         return False
-
-
