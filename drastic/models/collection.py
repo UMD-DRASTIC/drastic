@@ -47,12 +47,16 @@ class Collection(object):
         # Get name
         if self.is_root:
             self.name = u"Home"
-        else:
+        elif self.entry.name == ".":
             _, self.name = split(self.entry.container)
-        self.path = self.entry.container
-        self.container, _ = split(self.path)
+            self.path = self.entry.container
+            self.container, _ = split(self.path)
+        else:  # case where dealing with a child entry
+            self.name = self.entry.name
+            self.path = self.entry.container + '/' + self.name
+            self.container = self.entry.container
         self.uuid = self.entry.uuid
-        self.create_ts = self.entry.container_create_ts
+        self.create_ts = self.entry.create_ts
 
 
     @classmethod
