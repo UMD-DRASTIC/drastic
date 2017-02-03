@@ -34,7 +34,7 @@ from drastic.models.errors import (
     NoSuchCollectionError
 )
 
-# import logging
+import logging
 
 
 class Collection(object):
@@ -63,7 +63,10 @@ class Collection(object):
 
         self.uuid = self.entry.uuid
         self.create_ts = self.entry.create_ts
-
+        logging.debug(
+            'Collection.init():\nentry: {0}\nuuid: {1}\nname: {2}\npath: {3}\ncontainer: {4}'
+            .format(
+                str(self.entry), self.uuid, self.name, self.path, self.container))
 
     @classmethod
     def create(cls, name, container='/', metadata=None, username=None):
