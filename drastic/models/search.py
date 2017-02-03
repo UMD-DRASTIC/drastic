@@ -20,6 +20,7 @@ import logging
 
 from drastic.util import default_uuid
 
+
 class SearchIndex(Model):
     """SearchIndex Model"""
     term = columns.Text(required=True, primary_key=True)
@@ -146,11 +147,12 @@ class SearchIndex(Model):
             # Metadata are stored as json string, get_metadata() returns it as
             # a Python dictionary
             for k, v in metadata.iteritems():
-                # A value can be a string or a list of string
+                # A value can be a string, an integer, or a list of string
                 if isinstance(v, list):
                     for vv in v:
                         terms.extend([('metadata', el) for el in clean(vv.strip())])
                 else:
+                    v = str(v)
                     terms.extend([('metadata', el) for el in clean(v.strip())])
             fields.remove('metadata')
         for f in fields:
