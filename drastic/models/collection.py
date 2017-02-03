@@ -150,7 +150,7 @@ class Collection(object):
         session.execute(query, (self.path,))
         # Get the row that describe the collection as a child of its parent
         child = TreeEntry.objects.filter(container=self.container,
-                                           name=u"{}/".format(self.name)).first()
+                                         name=u"{}/".format(self.name)).first()
         if child:
             child.delete()
         state = self.mqtt_get_state()
@@ -258,20 +258,6 @@ class Collection(object):
                 child_container.append(entry.name[:-1])
             else:
                 child_dataobject.append(entry.name)
-        return (child_container, child_dataobject)
-
-
-    def get_child_objects(self):
-        entries = TreeEntry.objects.filter(container=self.path)
-        child_container = []
-        child_dataobject = []
-        for entry in list(entries):
-            if entry.name == '.':
-                continue
-            elif entry.name.endswith('/'):
-                child_container.append(Collection(entry))
-            else:
-                child_dataobject.append(Resource(entry))
         return (child_container, child_dataobject)
 
 
