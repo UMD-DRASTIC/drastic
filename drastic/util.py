@@ -368,7 +368,7 @@ def meta_cdmi_to_cassandra(metadata):
     d = {}
     for key, value in metadata.iteritems():
         # Don't store metadata without value
-        if not value:
+        if value is None:  # numeric zero is a valid value
             continue
         # Convert str to unicode
         if isinstance(value, str):
@@ -409,7 +409,3 @@ def split(path):
     coll_name = os.path.dirname(path)
     resc_name = os.path.basename(path)
     return tuple((coll_name, resc_name))
-
-
-
-
