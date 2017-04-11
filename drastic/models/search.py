@@ -1,6 +1,6 @@
 """SearchIndex Model
 
-As Cassandra doesn't provide %LIKE% style queries we are constrained to
+As Cassandra doesn't provide LIKE style queries we are constrained to
 only having direct matches and manually checking across each specific
 field.  This isn't ideal.
 

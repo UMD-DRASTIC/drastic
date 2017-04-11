@@ -24,21 +24,21 @@ def parse_arguments():
     description = 'Interact with the drastic system'
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument('command', type=str, metavar="N", nargs="+",
-        help='The command to run')
+                        help='The command to run')
     parser.add_argument('--config', '-c', dest='config', action='store',
-        help='Specify the location of the configuration file')
+                        help='Specify the location of the configuration file')
     parser.add_argument('--group', '-g', dest='group', action='store',
-        help='Specify the group name for ingestion of data')
+                        help='Specify the group name for ingestion of data')
     parser.add_argument('--user', '-u', dest='user', action='store',
-        help='Specify the username for ingestion of data')
+                        help='Specify the username for ingestion of data')
     parser.add_argument('--folder', dest='folder', action='store',
-        help='Specify the root folder to ingest from on disk')
+                        help='Specify the root folder to ingest from on disk')
     parser.add_argument('--noimport', dest='no_import', action='store_true',
-        help='Set if we do not want to import the files into Cassandra')
+                        help='Set if we do not want to import the files into Cassandra')
     parser.add_argument('--localip', dest='local_ip', action='store',
-        help='Specify the IP address for this machine (subnets/private etc)')
+                        help='Specify the IP address for this machine (subnets/private etc)')
     parser.add_argument('--include', dest='include', action='store',
-        help='include ONLY paths that include this string')
+                        help='include ONLY paths that include this string')
     return parser.parse_args()
 
 
@@ -61,7 +61,7 @@ def user_list(cfg):
     """Print user list"""
     from drastic.models import User
     for user in User.objects.all():
-        print "Username: {}, ID: {}".format(user.name, user.uuid)
+        print u'Username: {0}, ID: {1}'.format(user.name, user.uuid)
 
 
 # noinspection PyUnusedLocal
@@ -153,6 +153,16 @@ def group_list(cfg):
                 user.uuid, user.name, ("N", "Y")[user.administrator])
 
 
+def root_collection_create(cfg):
+    from drastic.models.collection import Collection
+    root = Collection.find("/")
+    if not root:
+        print "Creating root collection"
+        Collection.create_root()
+    else:
+        print "Using existing root collection"
+
+
 def main():
     """Main"""
     args = parse_arguments()
@@ -165,6 +175,8 @@ def main():
         connect(keyspace=cfg.get('KEYSPACE', 'drastic'),
                 hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )))
 
+    if command == 'root-collection-create':
+        root_collection_create(cfg)
     if command == 'user-create':
         user_add(cfg, args.command[1:])
     elif command == 'user-list':
@@ -180,4 +192,4 @@ def main():
     elif command == 'ingest':
         do_ingest(cfg, args)
     elif command == 'index':
-        pass#do_index(cfg, args)
+        pass  # do_index(cfg, args)

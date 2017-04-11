@@ -265,9 +265,10 @@ class Notification(Model):
         logging.info(u'Publishing on topic "{0}"'.format(topic))
         try:
             publish.single(topic, payload)
-        except:
+        except Exception as e:
             notification.update(processed=False)
-            logging.error(u'Problem while publishing on topic "{0}"'.format(topic))
+            logging.error(e)
+            logging.exception(u'Problem while publishing on topic "{0}"'.format(topic))
 
 
     @classmethod

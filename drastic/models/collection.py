@@ -13,7 +13,8 @@ import json
 from drastic import get_config
 from drastic.models import (
     TreeEntry,
-    Resource
+    Resource,
+
 )
 from drastic.models.acl import (
     acemask_to_str,
@@ -27,6 +28,10 @@ from drastic.util import (
     metadata_to_list,
     merge,
     split,
+)
+from drastic.graph import (
+    delete_graph_metadata,
+    put_graph_metadata
 )
 from drastic.models.errors import (
     CollectionConflictError,
@@ -72,7 +77,9 @@ class Collection(object):
         now = datetime.now()
         # If we try to create a tree enry with no metadata, cassandra-driver
         # will fail as it tries to delete a static column
+        metadata_graph = {}
         if metadata:
+            metadata_graph = metadata
             metadata = meta_cdmi_to_cassandra(metadata)
             coll_entry = TreeEntry.create(container=path,
                                           name='.',
@@ -85,6 +92,7 @@ class Collection(object):
                                           container_create_ts=now,
                                           container_modified_ts=now)
         coll_entry.update(uuid=coll_entry.container_uuid)
+        put_graph_metadata(coll_entry.container_uuid, coll_entry.name, metadata_graph)
         child_entry = TreeEntry.create(container=container,
                                        name=name + '/',
                                        uuid=coll_entry.container_uuid)
@@ -96,18 +104,15 @@ class Collection(object):
         new.index()
         return new
 
-
     def create_acl_list(self, read_access, write_access):
         """Create ACL in the tree entry table from two lists of groups id,
         existing ACL are replaced"""
         self.entry.create_container_acl_list(read_access, write_access)
 
-
     def create_acl_cdmi(self, cdmi_acl):
         """Create ACL in the tree entry table from ACL in the cdmi format (list
         of ACE dictionary), existing ACL are replaced"""
         self.entry.create_container_acl_cdmi(cdmi_acl)
-
 
     @classmethod
     def create_root(cls):
@@ -120,7 +125,6 @@ class Collection(object):
         root_entry.update(uuid=root_entry.container_uuid)
         root_entry.add_default_acl()
         return root_entry
-
 
     def delete(self, username=None):
         """Delete a collection and the associated row in the tree entry table"""
@@ -138,11 +142,11 @@ class Collection(object):
                                          name=u"{}/".format(self.name)).first()
         if child:
             child.delete()
+        delete_graph_metadata(self.uuid)
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
         Notification.delete_collection(username, self.path, payload)
         self.reset()
-
 
     @classmethod
     def delete_all(cls, path, username=None):
@@ -161,7 +165,6 @@ class Collection(object):
             Collection.delete_all(collection.path, username)
         parent.delete(username)
 
-
     @classmethod
     def find(cls, path):
         """Find a collection by path, initialise the collection with the
@@ -172,11 +175,9 @@ class Collection(object):
         else:
             return cls(entries.first())
 
-
     def get_acl(self):
         """Return a dictionary of acl based on the Collection schema"""
         return self.entry.container_acl
-
 
     def get_acl_list(self):
         """Return two list of groups id which have read and write access"""
@@ -196,11 +197,9 @@ class Collection(object):
                 pass
         return read_access, write_access
 
-
     def get_acl_metadata(self):
         """Return a dictionary of acl based on the Collection schema"""
         return serialize_acl_metadata(self)
-
 
     def get_authorized_actions(self, user):
         """"Get available actions for user according to a group"""
@@ -230,7 +229,6 @@ class Collection(object):
                     actions.add("edit")
         return actions
 
-
     def get_child(self):
         """Return two lists for child container and child dataobjects"""
         entries = TreeEntry.objects.filter(container=self.path)
@@ -245,21 +243,17 @@ class Collection(object):
                 child_dataobject.append(entry.name)
         return (child_container, child_dataobject)
 
-
     def get_child_resource_count(self):
         child_container, child_dataobject = self.get_child()
         return len(child_dataobject)
-
 
     def get_cdmi_metadata(self):
         """Return a dictionary of metadata"""
         return meta_cassandra_to_cdmi(self.entry.container_metadata)
 
-
     def get_list_metadata(self):
         """Transform metadata to a list of couples for web ui"""
         return metadata_to_list(self.entry.container_metadata)
-
 
     def get_metadata_key(self, key):
         """Return the value of a metadata"""
@@ -280,7 +274,6 @@ class Collection(object):
         payload['modified_ts'] = self.entry.container_modified_ts
         payload['metadata'] = self.get_cdmi_metadata()
         return payload
-
 
     def mqtt_payload(self, pre_state, post_state):
         """Get a string version of the payload of the message"""
@@ -310,16 +303,17 @@ class Collection(object):
             data['can_delete'] = self.user_can(user, "delete")
         return data
 
-
     def update(self, **kwargs):
         """Update a collection"""
         from drastic.models import Notification
         pre_state = self.mqtt_get_state()
         kwargs['container_modified_ts'] = datetime.now()
+        metadata_graph = {}
         if 'metadata' in kwargs:
             # Transform the metadata in cdmi format to the format stored in
             # Cassandra
-            metadata = meta_cdmi_to_cassandra(kwargs['metadata'])
+            metadata_graph = kwargs['metadata']
+            metadata = meta_cdmi_to_cassandra(metadata_graph)
             kwargs['container_metadata'] = metadata
             del kwargs['metadata']
         if 'username' in kwargs:
@@ -329,23 +323,21 @@ class Collection(object):
             username = None
         self.entry.update(**kwargs)
         coll = Collection.find(self.path)
+        put_graph_metadata(coll.uuid, coll.name, metadata_graph)
         post_state = coll.mqtt_get_state()
         payload = coll.mqtt_payload(pre_state, post_state)
         Notification.update_collection(username, coll.path, payload)
         coll.index()
-
 
     def update_acl_list(self, read_access, write_access):
         """Update ACL in the tree entry table from two lists of groups id,
         existing ACL are replaced"""
         self.entry.update_container_acl_list(read_access, write_access)
 
-
     def update_acl_cdmi(self, cdmi_acl):
         """Update ACL in the tree entry table from ACL in the cdmi format (list
         of ACE dictionary), existing ACL are replaced"""
         self.entry.update_container_acl_cdmi(cdmi_acl)
-
 
     def user_can(self, user, action):
         """

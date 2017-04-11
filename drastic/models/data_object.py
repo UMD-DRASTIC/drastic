@@ -1,4 +1,4 @@
-"""Resource Model
+"""Resource Data Chunk Storage Model
 
 """
 __copyright__ = "Copyright (C) 2016 University of Maryland"
@@ -45,6 +45,8 @@ static_fields = ["checksum",
 class DataObject(Model):
     """ The DataObject represents actual data objects, the tree structure
     merely references it.
+
+    Some data goes in both tables, such as metadata.
 
     Each partition key gathers together all the data under one partition (the
     CDMI ID ) and the object properties are represented using static columns

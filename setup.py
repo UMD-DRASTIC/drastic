@@ -28,6 +28,7 @@ setup(
         "nose==1.3.6",
         "blist==1.3.6",
         "requests==2.7.0",
+        "gremlinpython==3.2.4",
         "crcmod==1.7"
     ],
     entry_points={
