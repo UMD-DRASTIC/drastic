@@ -161,6 +161,9 @@ def root_collection_create(cfg):
         Collection.create_root()
     else:
         print "Using existing root collection"
+    root = Collection.find("/")
+    from drastic.graph import put_graph_metadata
+    put_graph_metadata(root.uuid, '/', {}, None)
 
 
 def main():

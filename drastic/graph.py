@@ -22,7 +22,7 @@ def patch_graph_metadata():
     """Adds and removes triples from existing data."""
 
 
-def put_graph_metadata(uuid, name, metadata):
+def put_graph_metadata(uuid, name, metadata, container_uuid):
     """Replaces existing user triples for a single subject."""
     logging.debug(u'PUT {0} metadata fields for {1}'.format(len(metadata.keys()), uuid))
     get_g().V().has('resource', 'drastic:uuid', uuid).drop().count().next()
@@ -35,6 +35,9 @@ def put_graph_metadata(uuid, name, metadata):
             continue
         t = t.property(key, value)
     t.next()
+    if container_uuid is not None:
+        c = get_g().V().has('resource', 'drastic:uuid', container_uuid)
+        c.addE('contains').to(get_g().V().has('resource', 'drastic:uuid', uuid)).next()
     logging.debug(u'Created resource vertex for {0}'.format(uuid))
 
 

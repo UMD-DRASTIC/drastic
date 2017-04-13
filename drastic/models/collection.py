@@ -92,7 +92,7 @@ class Collection(object):
                                           container_create_ts=now,
                                           container_modified_ts=now)
         coll_entry.update(uuid=coll_entry.container_uuid)
-        put_graph_metadata(coll_entry.container_uuid, coll_entry.name, metadata_graph)
+        put_graph_metadata(coll_entry.container_uuid, coll_entry.name, metadata_graph, parent.uuid)
         child_entry = TreeEntry.create(container=container,
                                        name=name + '/',
                                        uuid=coll_entry.container_uuid)
@@ -323,7 +323,8 @@ class Collection(object):
             username = None
         self.entry.update(**kwargs)
         coll = Collection.find(self.path)
-        put_graph_metadata(coll.uuid, coll.name, metadata_graph)
+        parent = Collection.find(coll.container)
+        put_graph_metadata(coll.uuid, coll.name, metadata_graph, parent.uuid)
         post_state = coll.mqtt_get_state()
         payload = coll.mqtt_payload(pre_state, post_state)
         Notification.update_collection(username, coll.path, payload)
