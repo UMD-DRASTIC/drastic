@@ -58,6 +58,7 @@ class Collection(object):
         self.container, _ = split(self.path)
         self.uuid = self.entry.uuid
         self.create_ts = self.entry.container_create_ts
+        self.modified_ts = self.entry.container_modified_ts
 
     @classmethod
     def create(cls, name, container='/', metadata=None, username=None):
@@ -92,7 +93,7 @@ class Collection(object):
                                           container_create_ts=now,
                                           container_modified_ts=now)
         coll_entry.update(uuid=coll_entry.container_uuid)
-        put_graph_metadata(coll_entry.container_uuid, coll_entry.name, metadata_graph, parent.uuid)
+        put_graph_metadata(coll_entry.container_uuid, name, metadata_graph, parent.uuid)
         child_entry = TreeEntry.create(container=container,
                                        name=name + '/',
                                        uuid=coll_entry.container_uuid)
@@ -352,3 +353,9 @@ class Collection(object):
         if action in actions:
             return True
         return False
+
+    def get_modified_ts(self):
+        return self.entry.modified_ts
+
+    def get_create_ts(self):
+        return self.entry.create_ts

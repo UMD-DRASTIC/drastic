@@ -122,7 +122,7 @@ class Resource(object):
 
         data_entry = TreeEntry.create(**kwargs)
         new = Resource(data_entry)
-        put_graph_metadata(new.uuid, new.name, metadata_graph, collection.uuid)
+        put_graph_metadata(new.uuid, name, metadata_graph, collection.uuid)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
         Notification.create_resource(username, path, payload)
@@ -450,6 +450,8 @@ class Resource(object):
             if 'url' in kwargs:
                 self.entry.update(url=kwargs['url'])
                 del kwargs['url']
+            if not self.obj:
+                self.obj = DataObject.find(self.obj_id)
             self.obj.update(**kwargs)
 
         resc = Resource.find(self.path)

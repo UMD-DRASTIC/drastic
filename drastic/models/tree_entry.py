@@ -88,6 +88,7 @@ class TreeEntry(Model):
     @classmethod
     def create(cls, **kwargs):
         """Create"""
+        # TODO Use Light Weight Transactions instead of "X already exists checks"
 #         if "mimetype" in kwargs:
 #             metadata = kwargs.get('metadata', {})
 #             metadata["cdmi_mimetype"] = kwargs["mimetype"]
@@ -104,7 +105,7 @@ class TreeEntry(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
-        query = SimpleStatement(u"""UPDATE tree_entry SET container_acl={} 
+        query = SimpleStatement(u"""UPDATE tree_entry SET container_acl={}
             WHERE container=%s""".format(acl_cql))
         session.execute(query, (self.container,))
 
@@ -128,7 +129,7 @@ class TreeEntry(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
-        query = SimpleStatement(u"""UPDATE tree_entry SET acl={} 
+        query = SimpleStatement(u"""UPDATE tree_entry SET acl={}
             WHERE container=%s and name=%s""".format(acl_cql))
         session.execute(query, (self.container, self.name,))
 
@@ -175,7 +176,7 @@ class TreeEntry(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
-        query = SimpleStatement(u"""UPDATE tree_entry SET container_acl=container_acl+{} 
+        query = SimpleStatement(u"""UPDATE tree_entry SET container_acl=container_acl+{}
             WHERE container=%s""".format(acl_cql))
         session.execute(query, (self.container,))
 
@@ -198,7 +199,7 @@ class TreeEntry(Model):
         session = connection.get_session()
         keyspace = cfg.get('KEYSPACE', 'drastic')
         session.set_keyspace(keyspace)
-        query = SimpleStatement(u"""UPDATE tree_entry SET acl=acl+{} 
+        query = SimpleStatement(u"""UPDATE tree_entry SET acl=acl+{}
             WHERE container=%s and name=%s""".format(acl_cql))
         session.execute(query, (self.container, self.name,))
 
@@ -213,4 +214,3 @@ class TreeEntry(Model):
         """"Update entry ACL from a cdmi object (list of dict)"""
         cql_string = acl_cdmi_to_cql(cdmi_acl)
         self.update_entry_acl(cql_string)
-
