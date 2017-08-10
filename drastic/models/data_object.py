@@ -106,6 +106,8 @@ class DataObject(Model):
         """
         entries = DataObject.objects.filter(uuid=self.uuid)
         for entry in entries:
+            if entry.blob is None:
+                yield ''
             if entry.compressed:
                 data = StringIO(entry.blob)
                 z = zipfile.ZipFile(data, 'r')
