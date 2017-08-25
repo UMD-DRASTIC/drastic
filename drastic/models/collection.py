@@ -29,10 +29,6 @@ from drastic.util import (
     merge,
     split,
 )
-from drastic.graph import (
-    delete_graph_metadata,
-    put_graph_metadata
-)
 from drastic.models.errors import (
     CollectionConflictError,
     ResourceConflictError,
@@ -78,9 +74,7 @@ class Collection(object):
         now = datetime.now()
         # If we try to create a tree enry with no metadata, cassandra-driver
         # will fail as it tries to delete a static column
-        metadata_graph = {}
         if metadata:
-            metadata_graph = metadata
             metadata = meta_cdmi_to_cassandra(metadata)
             coll_entry = TreeEntry.create(container=path,
                                           name='.',
@@ -93,14 +87,13 @@ class Collection(object):
                                           container_create_ts=now,
                                           container_modified_ts=now)
         coll_entry.update(uuid=coll_entry.container_uuid)
-        put_graph_metadata(coll_entry.container_uuid, name, metadata_graph, parent.uuid)
         child_entry = TreeEntry.create(container=container,
                                        name=name + '/',
                                        uuid=coll_entry.container_uuid)
         new = Collection.find(path)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
-        Notification.create_collection(username, path, payload)
+        Notification.create_collection(username, path, new.uuid, payload)
         # Index the collection
         new.index()
         return new
@@ -143,10 +136,9 @@ class Collection(object):
                                          name=u"{}/".format(self.name)).first()
         if child:
             child.delete()
-        delete_graph_metadata(self.uuid)
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
-        Notification.delete_collection(username, self.path, payload)
+        Notification.delete_collection(username, self.path, self.uuid, payload)
         self.reset()
 
     @classmethod
@@ -324,11 +316,9 @@ class Collection(object):
             username = None
         self.entry.update(**kwargs)
         coll = Collection.find(self.path)
-        parent = Collection.find(coll.container)
-        put_graph_metadata(coll.uuid, coll.name, metadata_graph, parent.uuid)
         post_state = coll.mqtt_get_state()
         payload = coll.mqtt_payload(pre_state, post_state)
-        Notification.update_collection(username, coll.path, payload)
+        Notification.update_collection(username, coll.path, coll.uuid, payload)
         coll.index()
 
     def update_acl_list(self, read_access, write_access):

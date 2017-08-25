@@ -1,8 +1,6 @@
 """Notification Model
 
 """
-__copyright__ = "Copyright (C) 2016 University of Maryland"
-__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
 import json
 import paho.mqtt.publish as publish
@@ -20,6 +18,8 @@ from drastic.util import (
     last_x_days
 )
 
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
 # Operations that could lead to a new notification
 OP_CREATE = "create"
@@ -35,11 +35,11 @@ OBJ_USER = "user"                 # id
 OBJ_GROUP = "group"               # id
 
 TEMPLATES = {
-    OP_CREATE : {},
-    OP_DELETE : {},
-    OP_UPDATE : {},
-    OP_INDEX : {},
-    OP_MOVE : {}
+    OP_CREATE: {},
+    OP_DELETE: {},
+    OP_UPDATE: {},
+    OP_INDEX: {},
+    OP_MOVE: {}
 }
 
 TEMPLATES[OP_CREATE][OBJ_RESOURCE] = """
@@ -118,6 +118,7 @@ TEMPLATES[OP_UPDATE][OBJ_GROUP] = """
 <span class="activity-timespan">{{ when|date:"M d, Y - P" }}</span>
 """
 
+
 class Notification(Model):
     """Notification Model"""
     date = columns.Text(default=default_date, partition_key=True)
@@ -129,35 +130,38 @@ class Notification(Model):
     # The type of the object concerned (Collection, Resource, User, Group, ...)
     object_type = columns.Text(primary_key=True)
     # The uuid of the object concerned, the key used to find the corresponding
-    # object (path, uuid, ...)
+    # object (uuid, ...)
     object_uuid = columns.Text(primary_key=True)
+
+    # The path to a resource or collection
+    object_path = columns.Text()
 
     # The user who initiates the operation
     username = columns.Text()
+
     # True if the corresponding worklow has been executed correctly (for Move
     # or indexing for instance)
     # True if nothing has to be done
     processed = columns.Boolean()
+
     # The payload of the message which is sent to MQTT
     payload = columns.Text()
-
 
     def __unicode__(self):
         return unicode(self.html)
 
-
     @classmethod
-    def create_collection(cls, username, path, payload):
+    def create_collection(cls, username, path, uuid, payload):
         """Create a new collection and publish the message on MQTT"""
         new = cls.new(operation=OP_CREATE,
                       object_type=OBJ_COLLECTION,
-                      object_uuid=path,
+                      object_uuid=uuid,
+                      object_path=path,
                       username=username,
                       processed=True,
                       payload=payload)
-        cls.mqtt_publish(new, OP_CREATE, OBJ_COLLECTION, path, payload)
+        cls.mqtt_publish(new, OP_CREATE, OBJ_COLLECTION, uuid, payload, path=path)
         return new
-
 
     @classmethod
     def create_group(cls, username, uuid, payload):
@@ -171,19 +175,18 @@ class Notification(Model):
         cls.mqtt_publish(new, OP_CREATE, OBJ_GROUP, uuid, payload)
         return new
 
-
     @classmethod
-    def create_resource(cls, username, path, payload):
+    def create_resource(cls, username, path, uuid, payload):
         """Create a new resource and publish the message on MQTT"""
         new = cls.new(operation=OP_CREATE,
                       object_type=OBJ_RESOURCE,
-                      object_uuid=path,
+                      object_uuid=uuid,
+                      object_path=path,
                       username=username,
                       processed=True,
                       payload=payload)
-        cls.mqtt_publish(new, OP_CREATE, OBJ_RESOURCE, path, payload)
+        cls.mqtt_publish(new, OP_CREATE, OBJ_RESOURCE, uuid, payload, path=path)
         return new
-
 
     @classmethod
     def create_user(cls, username, uuid, payload):
@@ -197,19 +200,18 @@ class Notification(Model):
         cls.mqtt_publish(new, OP_CREATE, OBJ_USER, uuid, payload)
         return new
 
-
     @classmethod
-    def delete_collection(cls, username, path, payload):
+    def delete_collection(cls, username, path, uuid, payload):
         """Delete a collection and publish the message on MQTT"""
         new = cls.new(operation=OP_DELETE,
                       object_type=OBJ_COLLECTION,
-                      object_uuid=path,
+                      object_uuid=uuid,
+                      object_path=path,
                       username=username,
                       processed=True,
                       payload=payload)
-        cls.mqtt_publish(new, OP_DELETE, OBJ_COLLECTION, path, payload)
+        cls.mqtt_publish(new, OP_DELETE, OBJ_COLLECTION, uuid, payload, path=path)
         return new
-
 
     @classmethod
     def delete_group(cls, username, uuid, payload):
@@ -223,19 +225,18 @@ class Notification(Model):
         cls.mqtt_publish(new, OP_DELETE, OBJ_GROUP, uuid, payload)
         return new
 
-
     @classmethod
-    def delete_resource(cls, username, path, payload):
+    def delete_resource(cls, username, path, uuid, payload):
         """Delete a resource and publish the message on MQTT"""
         new = cls.new(operation=OP_DELETE,
                       object_type=OBJ_RESOURCE,
-                      object_uuid=path,
+                      object_uuid=uuid,
+                      object_path=path,
                       username=username,
                       processed=True,
                       payload=payload)
-        cls.mqtt_publish(new, OP_DELETE, OBJ_RESOURCE, path, payload)
+        cls.mqtt_publish(new, OP_DELETE, OBJ_RESOURCE, uuid, payload, path=path)
         return new
-
 
     @classmethod
     def delete_user(cls, username, uuid, payload):
@@ -249,14 +250,13 @@ class Notification(Model):
         cls.mqtt_publish(new, OP_DELETE, OBJ_USER, uuid, payload)
         return new
 
-
     def tmpl(self):
         return TEMPLATES[self.operation][self.object_type]
 
-
     @classmethod
-    def mqtt_publish(cls, notification, operation, object_type, object_uuid, payload):
-        topic = u'{0}/{1}/{2}'.format(operation, object_type, object_uuid)
+    def mqtt_publish(cls, notification, operation, object_type, object_uuid, payload,
+                     path=""):
+        topic = u'{0}/{1}/{2}/{3}'.format(operation, object_type, object_uuid, path)
         # Clean up the topic by removing superfluous slashes.
         topic = '/'.join(filter(None, topic.split('/')))
         # Remove MQTT wildcards from the topic. Corner-case: If the collection name is made entirely of # and + and a
@@ -270,13 +270,11 @@ class Notification(Model):
             logging.error(e)
             logging.exception(u'Problem while publishing on topic "{0}"'.format(topic))
 
-
     @classmethod
     def new(cls, **kwargs):
         """Create"""
         new = super(Notification, cls).create(**kwargs)
         return new
-
 
     @classmethod
     def recent(cls, count=20):
@@ -318,19 +316,18 @@ class Notification(Model):
         }
         return data
 
-
     @classmethod
-    def update_collection(cls, username, path, payload):
+    def update_collection(cls, username, path, uuid, payload):
         """Update a collection and publish the message on MQTT"""
         new = cls.new(operation=OP_UPDATE,
                       object_type=OBJ_COLLECTION,
-                      object_uuid=path,
+                      object_uuid=uuid,
+                      object_path=path,
                       username=username,
                       processed=True,
                       payload=payload)
-        cls.mqtt_publish(new, OP_UPDATE, OBJ_COLLECTION, path, payload)
+        cls.mqtt_publish(new, OP_UPDATE, OBJ_COLLECTION, uuid, payload, path=path)
         return new
-
 
     @classmethod
     def update_group(cls, username, uuid, payload):
@@ -344,19 +341,18 @@ class Notification(Model):
         cls.mqtt_publish(new, OP_UPDATE, OBJ_GROUP, uuid, payload)
         return new
 
-
     @classmethod
-    def update_resource(cls, username, path, payload):
+    def update_resource(cls, username, path, uuid, payload):
         """Update a resource and publish the message on MQTT"""
         new = cls.new(operation=OP_UPDATE,
                       object_type=OBJ_RESOURCE,
-                      object_uuid=path,
+                      object_uuid=uuid,
+                      object_path=path,
                       username=username,
                       processed=True,
                       payload=payload)
-        cls.mqtt_publish(new, OP_UPDATE, OBJ_RESOURCE, path, payload)
+        cls.mqtt_publish(new, OP_UPDATE, OBJ_RESOURCE, uuid, payload, path=path)
         return new
-
 
     @classmethod
     def update_user(cls, username, uuid, payload):

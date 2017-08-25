@@ -1,8 +1,6 @@
 """Resource (or File) Model
 
 """
-__copyright__ = "Copyright (C) 2016 University of Maryland"
-__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
 
 
 from datetime import datetime
@@ -21,10 +19,6 @@ from drastic.models.errors import (
     NoSuchCollectionError,
     ResourceConflictError
 )
-from drastic.graph import (
-    put_graph_metadata,
-    delete_graph_metadata
-)
 from drastic.util import (
     datetime_serializer,
     decode_meta,
@@ -35,6 +29,10 @@ from drastic.util import (
     metadata_to_list,
     split,
 )
+
+__copyright__ = "Copyright (C) 2016 University of Maryland"
+__license__ = "GNU AFFERO GENERAL PUBLIC LICENSE, Version 3"
+
 
 def is_reference(url):
     return not url.startswith("cassandra://")
@@ -122,10 +120,9 @@ class Resource(object):
 
         data_entry = TreeEntry.create(**kwargs)
         new = Resource(data_entry)
-        put_graph_metadata(new.uuid, name, metadata_graph, collection.uuid)
         state = new.mqtt_get_state()
         payload = new.mqtt_payload({}, state)
-        Notification.create_resource(username, path, payload)
+        Notification.create_resource(username, path, new.uuid, payload)
         # Index the resource
         new.index()
         return new
@@ -153,10 +150,9 @@ class Resource(object):
         from drastic.models import Notification
         self.delete_blobs()
         self.entry.delete()
-        delete_graph_metadata(self.uuid)
         state = self.mqtt_get_state()
         payload = self.mqtt_payload(state, {})
-        Notification.delete_resource(username, self.path, payload)
+        Notification.delete_resource(username, self.path, self.uuid, payload)
         self.reset()
 
 
@@ -455,12 +451,9 @@ class Resource(object):
             self.obj.update(**kwargs)
 
         resc = Resource.find(self.path)
-        from drastic.models import Collection
-        collection = Collection.find(self.container)
-        put_graph_metadata(resc.uuid, resc.name, metadata_graph, collection.uuid)
         post_state = resc.mqtt_get_state()
         payload = resc.mqtt_payload(pre_state, post_state)
-        Notification.update_resource(username, resc.path, payload)
+        Notification.update_resource(username, resc.path, resc.uuid, payload)
 
         # Index the resource
         resc.index()
