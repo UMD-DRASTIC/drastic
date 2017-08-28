@@ -310,6 +310,7 @@ class Notification(Model):
             'operation': self.operation,
             'object_type': self.object_type,
             'object_uuid': self.object_uuid,
+            'object_path': self.object_path,
             'username': self.username,
             'tmpl': self.tmpl(),
             'payload': json.loads(self.payload)
