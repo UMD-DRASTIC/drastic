@@ -73,7 +73,7 @@ def create_keyspace(keyspace="drastic", hosts=('127.0.0.1',), strategy='SimpleSt
                     'on hosts "{0}" with strategy "{1}" and replication factor "{3}"'
                     .format(hosts, strategy, keyspace, repl_factor))
         mycluster = Cluster(hosts, protocol_version=4,
-                            connect_timeout=10)
+                            connect_timeout=20)
         session = mycluster.connect()
         session.row_factory = dict_factory
         session.default_consistency_level = ConsistencyLevel.ALL,
