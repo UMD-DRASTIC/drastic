@@ -67,29 +67,29 @@ def create_keyspace(keyspace="drastic", hosts=('127.0.0.1',), strategy='SimpleSt
     num_retries = 6
     retry_timeout = 1
 
-    for retry in xrange(num_retries):
-        try:
-            logger.info('Creating Cassandra keyspace "{2}" '
-                        'on hosts "{0}" with strategy "{1}" and replication factor "{3}"'
-                        .format(hosts, strategy, keyspace, repl_factor))
-            mycluster = Cluster(hosts, protocol_version=4,
-                                connect_timeout=5)
-            session = mycluster.connect()
-            session.row_factory = dict_factory
-            session.default_consistency_level = ConsistencyLevel.ALL,
-            connection.set_session(session)
+    # for retry in xrange(num_retries):
+    try:
+        logger.info('Creating Cassandra keyspace "{2}" '
+                    'on hosts "{0}" with strategy "{1}" and replication factor "{3}"'
+                    .format(hosts, strategy, keyspace, repl_factor))
+        mycluster = Cluster(hosts, protocol_version=4,
+                            connect_timeout=10)
+        session = mycluster.connect()
+        session.row_factory = dict_factory
+        session.default_consistency_level = ConsistencyLevel.ALL,
+        connection.set_session(session)
 
-            if strategy is 'SimpleStrategy':
-                create_keyspace_simple(keyspace, repl_factor, True)
-            else:
-                create_keyspace_network_topology(keyspace, {}, True)
+        if strategy is 'SimpleStrategy':
+            create_keyspace_simple(keyspace, repl_factor)
+        else:
+            create_keyspace_network_topology(keyspace, {})
 
-            break
-        except cassandra.cluster.NoHostAvailable:
-            logger.warning(
-                'Unable to connect to Cassandra. Retrying in {0} seconds...'.format(retry_timeout))
-            time.sleep(retry_timeout)
-            retry_timeout *= 2
+        # break
+    except cassandra.cluster.NoHostAvailable:
+        logger.warning(
+            'Unable to connect to Cassandra. Retrying in {0} seconds...'.format(retry_timeout))
+    #        time.sleep(retry_timeout)
+    #        retry_timeout *= 2
 
 
 def sync():
