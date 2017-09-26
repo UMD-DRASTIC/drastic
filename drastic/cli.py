@@ -42,13 +42,8 @@ def parse_arguments():
     return parser.parse_args()
 
 
-# noinspection PyUnusedLocal
 def create(cfg):
-    """Create the keyspace and the tables"""
-    create_keyspace(keyspace=cfg.get('KEYSPACE', 'drastic'),
-                    hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
-                    repl_factor=cfg.get('REPLICATION_FACTOR', 1))
-    # reconnect after above, which uses 'system' keyspace.
+    """Create the tables"""
     # Use consistent connection for schema changes
     connect(keyspace=cfg.get('KEYSPACE', 'drastic'),
             hosts=cfg.get('CASSANDRA_HOSTS', ('127.0.0.1', )),
@@ -162,8 +157,6 @@ def root_collection_create(cfg):
     else:
         print "Using existing root collection"
     root = Collection.find("/")
-    from drastic.graph import put_graph_metadata
-    put_graph_metadata(root.uuid, '/', {}, None)
 
 
 def main():
