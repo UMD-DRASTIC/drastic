@@ -162,7 +162,11 @@ def root_collection_create(cfg):
 def main():
     """Main"""
     args = parse_arguments()
-    cfg = get_config(args.config)
+    cfg = None
+    if args.config:
+        cfg = get_config(args.config)
+    else:
+        cfg = get_config('settings')
 
     command = args.command[0]
     if command == 'create':
