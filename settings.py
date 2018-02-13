@@ -4,7 +4,7 @@ import os
 
 def ips(hostnames):
     result = []
-    hostnames = hostnames.split()
+    hostnames = hostnames.split(',')
     for v in hostnames:
         try:
             ip = socket.gethostbyname(v)
